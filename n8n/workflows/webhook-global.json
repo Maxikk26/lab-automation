@@ -1,0 +1,220 @@
+{
+  "name": "Lab InmunoXXI - Webhook Tiempos Global",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tiempos-global",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-glob-trigger",
+      "name": "Recibir Archivo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "tiempos-global"
+    },
+    {
+      "parameters": {
+        "operation": "fromFile",
+        "fileFormat": "xls",
+        "options": {
+          "headerRow": false
+        }
+      },
+      "id": "wh-glob-parse",
+      "name": "Parsear XLS",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// =============================================\n// Validar y Transformar - Tiempos Global\n// Recibe datos del webhook (archivo subido)\n// =============================================\n\nconst allItems = $input.all();\n\ntry {\n\nlet fileName = 'upload.xls';\ntry {\n  const binaryData = $('Recibir Archivo').first().binary;\n  if (binaryData && binaryData.data && binaryData.data.fileName) {\n    fileName = binaryData.data.fileName;\n  }\n} catch(e) { /* keep default */ }\n\n// --- DETECTAR COLUMNAS ---\nconst firstJson = allItems[0].json;\nlet getCol;\nlet repKeysLen = 10;\n\nif ('row' in firstJson && Array.isArray(firstJson.row)) {\n  getCol = (item, idx) => item.json.row ? item.json.row[idx] : undefined;\n  repKeysLen = 10;\n} else {\n  let maxKeys = 0;\n  let repKeys = [];\n  for (let i = 0; i < Math.min(allItems.length, 30); i++) {\n    const keys = Object.keys(allItems[i].json).filter(k => k !== 'row_number');\n    if (keys.length > maxKeys) { maxKeys = keys.length; repKeys = [...keys]; }\n  }\n  if (maxKeys >= 7) {\n    repKeys.sort((a, b) => {\n      const nA = Number(a); const nB = Number(b);\n      if (!isNaN(nA) && !isNaN(nB)) return nA - nB;\n      const mA = a.match(/(\\d+)/); const mB = b.match(/(\\d+)/);\n      if (mA && mB) return parseInt(mA[1]) - parseInt(mB[1]);\n      return a.localeCompare(b);\n    });\n    getCol = (item, idx) => idx < repKeys.length ? item.json[repKeys[idx]] : undefined;\n    repKeysLen = repKeys.length;\n  } else {\n    return [{ json: { valid: false, errorMessage: 'Estructura invalida: solo ' + maxKeys + ' columnas detectadas en ' + fileName } }];\n  }\n}\n\nfunction esc(s) { return String(s || '').replace(/'/g, \"''\").trim(); }\nfunction timeToDays(s) {\n  if (s === undefined || s === null) return 'NULL::numeric';\n  const str = String(s).trim();\n  if (!str) return 'NULL::numeric';\n  const m = str.match(/^(\\d+):(\\d{2})$/);\n  if (!m) return 'NULL::numeric';\n  return Math.round(((parseInt(m[1]) + parseInt(m[2]) / 60) / 24) * 10000) / 10000;\n}\n\n// --- Buscar rango de fechas ---\nlet dateMatch = null;\nfor (let i = 0; i < Math.min(allItems.length, 15); i++) {\n  for (let c = 0; c < Math.min(repKeysLen, 5); c++) {\n    const val = String(getCol(allItems[i], c) || '');\n    const m = val.match(/Fecha inicial:\\s*(\\d{2})\\/(\\d{2})\\/(\\d{4})\\s+Fecha final:\\s*(\\d{2})\\/(\\d{2})\\/(\\d{4})/);\n    if (m) { dateMatch = m; break; }\n  }\n  if (dateMatch) break;\n}\n\nif (!dateMatch) {\n  return [{ json: { valid: false, errorMessage: 'No se encontro rango de fechas en ' + fileName + '. Verifique que sea un archivo de tiempos de entrega.' } }];\n}\n\nconst fechaInicio = dateMatch[3] + '-' + dateMatch[2] + '-' + dateMatch[1];\nconst fechaFin = dateMatch[6] + '-' + dateMatch[5] + '-' + dateMatch[4];\nconst anio = parseInt(dateMatch[3]);\nconst mesNum = parseInt(dateMatch[2]);\nconst meses = ['','ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];\nconst mes = meses[mesNum];\n\n// --- Encontrar inicio de secciones ---\nlet secStart = -1;\nfor (let i = 0; i < Math.min(allItems.length, 20); i++) {\n  const v = String(getCol(allItems[i], 0) || '').trim();\n  if (/secci[oó]n/i.test(v)) { secStart = i + 1; break; }\n}\nif (secStart < 0) {\n  for (let i = 2; i < Math.min(allItems.length, 20); i++) {\n    const c0 = String(getCol(allItems[i], 0) || '').trim();\n    const c1 = getCol(allItems[i], 1);\n    if (c0.length > 2 && !isNaN(parseInt(c1)) && parseInt(c1) > 0) { secStart = i; break; }\n  }\n}\nif (secStart < 0) secStart = 5;\n\n// --- Extraer secciones ---\nconst sectionsMap = new Map();\nfor (let i = secStart; i < allItems.length; i++) {\n  const name = String(getCol(allItems[i], 0) || '').trim();\n  if (/^total$/i.test(name)) break;\n  if (/^examen$/i.test(name)) break;\n  if (!name) continue;\n  const tVal = getCol(allItems[i], 1);\n  if (tVal === undefined || tVal === null || String(tVal).trim() === '') continue;\n  sectionsMap.set(name.toUpperCase(), {\n    seccion: name,\n    total: parseInt(tVal) || 0,\n    ingRes: String(getCol(allItems[i], 2) || '').trim(),\n    resVal: String(getCol(allItems[i], 3) || '').trim(),\n    ingVal: String(getCol(allItems[i], 4) || '').trim(),\n    valImp: String(getCol(allItems[i], 5) || '').trim(),\n    ingImp: String(getCol(allItems[i], 6) || '').trim()\n  });\n}\nconst sections = Array.from(sectionsMap.values());\n\nif (sections.length === 0) {\n  return [{ json: { valid: false, errorMessage: 'No se encontraron secciones en ' + fileName } }];\n}\n\n// --- SQL para periodo + secciones ---\nconst secVals = sections.map(s =>\n  `('${esc(s.seccion)}', ${s.total}, '${esc(s.ingRes)}', '${esc(s.resVal)}', '${esc(s.ingVal)}', '${esc(s.valImp)}', '${esc(s.ingImp)}', ${timeToDays(s.ingRes)}, ${timeToDays(s.resVal)}, ${timeToDays(s.ingVal)}, ${timeToDays(s.valImp)}, ${timeToDays(s.ingImp)})`\n).join(',\\n    ');\n\nconst sectionSQL = `\nWITH new_periodo AS (\n  INSERT INTO periodos (fecha_inicio, fecha_fin, mes, anio, archivo_origen)\n  VALUES ('${fechaInicio}', '${fechaFin}', '${mes}', ${anio}, '${esc(fileName)}')\n  ON CONFLICT (fecha_inicio, fecha_fin)\n  DO UPDATE SET archivo_origen = EXCLUDED.archivo_origen\n  RETURNING id\n)\nINSERT INTO tiempos_seccion (\n  periodo_id, seccion, total_examenes,\n  ingreso_resultado_horas, resultado_validacion_horas, ingreso_validacion_horas,\n  validacion_impresion_horas, ingreso_impresion_horas,\n  ingreso_resultado_dias, resultado_validacion_dias, ingreso_validacion_dias,\n  validacion_impresion_dias, ingreso_impresion_dias,\n  meta_dias, eficacia\n)\nSELECT\n  np.id, v.seccion, v.total_examenes,\n  v.ir_h, v.rv_h, v.iv_h, v.vi_h, v.ii_h,\n  v.ir_d, v.rv_d, v.iv_d, v.vi_d, v.ii_d,\n  m.meta_dias,\n  CASE WHEN v.ii_d > 0 AND m.meta_dias IS NOT NULL AND m.meta_dias > 0\n    THEN ROUND(m.meta_dias / v.ii_d, 4)\n    ELSE NULL\n  END\nFROM new_periodo np\nCROSS JOIN (VALUES\n    ${secVals}\n) AS v(seccion, total_examenes, ir_h, rv_h, iv_h, vi_h, ii_h, ir_d, rv_d, iv_d, vi_d, ii_d)\nLEFT JOIN metas_seccion m ON UPPER(TRIM(m.seccion)) = UPPER(TRIM(v.seccion))\nON CONFLICT (periodo_id, seccion)\nDO UPDATE SET\n  total_examenes = EXCLUDED.total_examenes,\n  ingreso_resultado_horas = EXCLUDED.ingreso_resultado_horas,\n  resultado_validacion_horas = EXCLUDED.resultado_validacion_horas,\n  ingreso_validacion_horas = EXCLUDED.ingreso_validacion_horas,\n  validacion_impresion_horas = EXCLUDED.validacion_impresion_horas,\n  ingreso_impresion_horas = EXCLUDED.ingreso_impresion_horas,\n  ingreso_resultado_dias = EXCLUDED.ingreso_resultado_dias,\n  resultado_validacion_dias = EXCLUDED.resultado_validacion_dias,\n  ingreso_validacion_dias = EXCLUDED.ingreso_validacion_dias,\n  validacion_impresion_dias = EXCLUDED.validacion_impresion_dias,\n  ingreso_impresion_dias = EXCLUDED.ingreso_impresion_dias,\n  meta_dias = EXCLUDED.meta_dias,\n  eficacia = EXCLUDED.eficacia;\n`;\n\n// --- Extraer examenes individuales ---\nlet examStart = -1;\nfor (let i = secStart; i < allItems.length; i++) {\n  const v = String(getCol(allItems[i], 0) || '').trim();\n  if (/^examen$/i.test(v)) { examStart = i + 1; break; }\n}\n\nlet examSQL = '';\nlet examCount = 0;\nif (examStart > 0) {\n  const examsMap = new Map();\n  for (let i = examStart; i < allItems.length; i++) {\n    const name = String(getCol(allItems[i], 0) || '').trim();\n    if (/^total$/i.test(name)) break;\n    if (!name) continue;\n    const tVal = getCol(allItems[i], 1);\n    if (tVal === undefined || tVal === null || String(tVal).trim() === '') continue;\n    examsMap.set(name.toUpperCase(), {\n      examen: name, total: parseInt(tVal) || 0,\n      ingRes: String(getCol(allItems[i], 2) || '').trim(),\n      resVal: String(getCol(allItems[i], 3) || '').trim(),\n      ingVal: String(getCol(allItems[i], 4) || '').trim(),\n      valImp: String(getCol(allItems[i], 5) || '').trim(),\n      ingImp: String(getCol(allItems[i], 6) || '').trim()\n    });\n  }\n  const exams = Array.from(examsMap.values());\n  examCount = exams.length;\n  if (exams.length > 0) {\n    const examVals = exams.map(e =>\n      `('${esc(e.examen)}', ${e.total}, '${esc(e.ingRes)}', '${esc(e.resVal)}', '${esc(e.ingVal)}', '${esc(e.valImp)}', '${esc(e.ingImp)}', ${timeToDays(e.ingRes)}, ${timeToDays(e.resVal)}, ${timeToDays(e.ingVal)}, ${timeToDays(e.valImp)}, ${timeToDays(e.ingImp)})`\n    ).join(',\\n      ');\n    examSQL = `\nWITH periodo AS (\n  SELECT id FROM periodos\n  WHERE fecha_inicio = '${fechaInicio}' AND fecha_fin = '${fechaFin}'\n  LIMIT 1\n)\nINSERT INTO tiempos_examen (\n  periodo_id, examen, total_examenes,\n  ingreso_resultado_horas, resultado_validacion_horas, ingreso_validacion_horas,\n  validacion_impresion_horas, ingreso_impresion_horas,\n  ingreso_resultado_dias, resultado_validacion_dias, ingreso_validacion_dias,\n  validacion_impresion_dias, ingreso_impresion_dias\n)\nSELECT\n  p.id, v.examen, v.total_examenes,\n  v.ir_h, v.rv_h, v.iv_h, v.vi_h, v.ii_h,\n  v.ir_d, v.rv_d, v.iv_d, v.vi_d, v.ii_d\nFROM periodo p\nCROSS JOIN (VALUES\n      ${examVals}\n) AS v(examen, total_examenes, ir_h, rv_h, iv_h, vi_h, ii_h, ir_d, rv_d, iv_d, vi_d, ii_d);\n`;\n  }\n}\n\nconst deleteExamsSQL = `\nDELETE FROM tiempos_examen\nWHERE periodo_id = (\n  SELECT id FROM periodos\n  WHERE fecha_inicio = '${fechaInicio}' AND fecha_fin = '${fechaFin}'\n);\n`;\n\nconst info = {\n  periodo: mes + ' ' + anio,\n  totalSecciones: sections.length,\n  totalExamenes: examCount,\n  fileName: fileName\n};\n\nconst output = [\n  { json: { valid: true, query: sectionSQL, info: info } }\n];\nif (examSQL) {\n  output.push({ json: { valid: true, query: deleteExamsSQL } });\n  output.push({ json: { valid: true, query: examSQL } });\n}\nreturn output;\n\n} catch (err) {\n  return [{ json: { valid: false, errorMessage: 'Error procesando archivo: ' + err.message } }];\n}"
+      },
+      "id": "wh-glob-transform",
+      "name": "Validar y Transformar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "wh-glob-if-valid",
+      "name": "Es Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "id": "wh-glob-db",
+      "name": "Guardar en BD",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [880, 200],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Lab PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const info = $('Validar y Transformar').first().json.info || {};\nreturn [{ json: {\n  success: true,\n  message: 'Procesado: ' + (info.totalSecciones || 0) + ' secciones, ' + (info.totalExamenes || 0) + ' examenes - ' + (info.periodo || ''),\n  details: info\n}}];"
+      },
+      "id": "wh-glob-format-ok",
+      "name": "Formatear Exito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "wh-glob-respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1320, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const errorMsg = $input.first().json.errorMessage || 'Error desconocido';\nreturn [{ json: {\n  success: false,\n  message: errorMsg\n}}];"
+      },
+      "id": "wh-glob-format-err",
+      "name": "Formatear Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 440]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "wh-glob-respond-err",
+      "name": "Responder Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1100, 440]
+    }
+  ],
+  "connections": {
+    "Recibir Archivo": {
+      "main": [
+        [
+          {
+            "node": "Parsear XLS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear XLS": {
+      "main": [
+        [
+          {
+            "node": "Validar y Transformar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar y Transformar": {
+      "main": [
+        [
+          {
+            "node": "Es Valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es Valido?": {
+      "main": [
+        [
+          {
+            "node": "Guardar en BD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Formatear Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar en BD": {
+      "main": [
+        [
+          {
+            "node": "Formatear Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Exito": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Error": {
+      "main": [
+        [
+          {
+            "node": "Responder Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "lab-inmunoxxi"
+  }
+}

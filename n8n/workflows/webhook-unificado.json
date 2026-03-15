@@ -1,0 +1,195 @@
+{
+  "name": "Lab InmunoXXI - Webhook Tiempos Unificado (Multi-Pestaña)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tiempos-unificado",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-uni-trigger",
+      "name": "Recibir Archivo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "tiempos-unificado"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// =============================================\n// Tiempos Unificado - Multi-Pestaña\n// Lee todas las pestañas del archivo .xls,\n// cada pestaña es una sección.\n// =============================================\n\nconst XLSX = require('xlsx');\n\ntry {\n\n// --- Obtener archivo binario ---\nconst binaryData = $input.first().binary;\nif (!binaryData || !binaryData.data) {\n  return [{ json: { valid: false, errorMessage: 'No se recibio archivo' } }];\n}\n\nconst binaryObj = binaryData.data;\nlet fileName = binaryObj.fileName || 'upload.xls';\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst workbook = XLSX.read(buffer, { type: 'buffer' });\nconst sheetNames = workbook.SheetNames;\n\nif (sheetNames.length === 0) {\n  return [{ json: { valid: false, errorMessage: 'El archivo no tiene pestañas: ' + fileName } }];\n}\n\n// --- Funciones auxiliares ---\nfunction esc(s) {\n  return String(s || '').replace(/'/g, \"''\").trim();\n}\nfunction timeToDays(s) {\n  if (s === undefined || s === null) return 'NULL::numeric';\n  const str = String(s).trim();\n  if (!str) return 'NULL::numeric';\n  const m = str.match(/^(\\d+):(\\d{2})$/);\n  if (!m) return 'NULL::numeric';\n  return Math.round(((parseInt(m[1]) + parseInt(m[2]) / 60) / 24) * 10000) / 10000;\n}\n\nlet fechaInicio = null;\nlet fechaFin = null;\nlet anio = null;\nlet mes = null;\nconst meses = ['','ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];\n\nconst secciones = [];\nconst todosExamenes = [];\nconst errores = [];\n\n// --- Procesar cada pestaña ---\nfor (const sheetName of sheetNames) {\n  const ws = workbook.Sheets[sheetName];\n  const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });\n\n  if (rows.length < 9) {\n    errores.push(sheetName + ': muy pocas filas (' + rows.length + ')');\n    continue;\n  }\n\n  // Buscar fechas (primeras 15 filas, columnas 0-4)\n  if (!fechaInicio) {\n    outer: for (let i = 0; i < Math.min(rows.length, 15); i++) {\n      for (let c = 0; c < 5; c++) {\n        const val = String(rows[i]?.[c] || '');\n        const m = val.match(/Fecha inicial:\\s*(\\d{2})\\/(\\d{2})\\/(\\d{4})\\s+Fecha final:\\s*(\\d{2})\\/(\\d{2})\\/(\\d{4})/);\n        if (m) {\n          fechaInicio = m[3] + '-' + m[2] + '-' + m[1];\n          fechaFin = m[6] + '-' + m[5] + '-' + m[4];\n          anio = parseInt(m[3]);\n          mes = meses[parseInt(m[2])];\n          break outer;\n        }\n      }\n    }\n  }\n\n  // Fila 5 = datos de la sección (index 5)\n  const secRow = rows[5];\n  if (!secRow || !secRow[0]) {\n    errores.push(sheetName + ': no se encontro datos de seccion en fila 6');\n    continue;\n  }\n\n  const seccionNombre = String(secRow[0]).trim();\n  const secTotal = parseInt(secRow[1]) || 0;\n  const secIngRes = String(secRow[2] || '').trim();\n  const secResVal = String(secRow[3] || '').trim();\n  const secIngVal = String(secRow[4] || '').trim();\n  const secValImp = String(secRow[5] || '').trim();\n  const secIngImp = String(secRow[6] || '').trim();\n\n  secciones.push({\n    seccion: seccionNombre,\n    total: secTotal,\n    ingRes: secIngRes,\n    resVal: secResVal,\n    ingVal: secIngVal,\n    valImp: secValImp,\n    ingImp: secIngImp\n  });\n\n  // Examenes: desde fila 9 (index 9) hasta \"Total\"\n  for (let i = 9; i < rows.length; i++) {\n    const row = rows[i];\n    if (!row || !row[0]) continue;\n    const name = String(row[0]).trim();\n    if (/^total$/i.test(name)) break;\n    const tVal = row[1];\n    if (tVal === undefined || tVal === null || String(tVal).trim() === '') continue;\n    todosExamenes.push({\n      seccionPadre: seccionNombre,\n      examen: name,\n      total: parseInt(tVal) || 0,\n      ingRes: String(row[2] || '').trim(),\n      resVal: String(row[3] || '').trim(),\n      ingVal: String(row[4] || '').trim(),\n      valImp: String(row[5] || '').trim(),\n      ingImp: String(row[6] || '').trim()\n    });\n  }\n}\n\nif (!fechaInicio) {\n  const debug = workbook.SheetNames.slice(0, 2).map(sn => {\n    const ws = workbook.Sheets[sn];\n    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });\n    return { sheet: sn, filas: rows.slice(0, 5).map(r => (r || []).slice(0, 5)) };\n  });\n  return [{ json: { valid: false, errorMessage: 'No se encontro rango de fechas en ninguna pestaña de ' + fileName, debug: debug } }];\n}\n\nif (secciones.length === 0) {\n  return [{ json: { valid: false, errorMessage: 'No se encontraron secciones validas en ' + fileName } }];\n}\n\n// --- SQL: Periodo + Secciones ---\nconst secVals = secciones.map(s =>\n  `('${esc(s.seccion)}', ${s.total}, '${esc(s.ingRes)}', '${esc(s.resVal)}', '${esc(s.ingVal)}', '${esc(s.valImp)}', '${esc(s.ingImp)}', ${timeToDays(s.ingRes)}, ${timeToDays(s.resVal)}, ${timeToDays(s.ingVal)}, ${timeToDays(s.valImp)}, ${timeToDays(s.ingImp)})`\n).join(',\\n    ');\n\nconst sectionSQL = `\nWITH new_periodo AS (\n  INSERT INTO periodos (fecha_inicio, fecha_fin, mes, anio, archivo_origen)\n  VALUES ('${fechaInicio}', '${fechaFin}', '${mes}', ${anio}, '${esc(fileName)}')\n  ON CONFLICT (fecha_inicio, fecha_fin)\n  DO UPDATE SET archivo_origen = EXCLUDED.archivo_origen\n  RETURNING id\n)\nINSERT INTO tiempos_seccion (\n  periodo_id, seccion, total_examenes,\n  ingreso_resultado_horas, resultado_validacion_horas, ingreso_validacion_horas,\n  validacion_impresion_horas, ingreso_impresion_horas,\n  ingreso_resultado_dias, resultado_validacion_dias, ingreso_validacion_dias,\n  validacion_impresion_dias, ingreso_impresion_dias,\n  meta_dias, eficacia\n)\nSELECT\n  np.id, v.seccion, v.total_examenes,\n  v.ir_h, v.rv_h, v.iv_h, v.vi_h, v.ii_h,\n  v.ir_d, v.rv_d, v.iv_d, v.vi_d, v.ii_d,\n  m.meta_dias,\n  CASE WHEN v.ii_d > 0 AND m.meta_dias IS NOT NULL AND m.meta_dias > 0\n    THEN ROUND(m.meta_dias / v.ii_d, 4)\n    ELSE NULL\n  END\nFROM new_periodo np\nCROSS JOIN (VALUES\n    ${secVals}\n) AS v(seccion, total_examenes, ir_h, rv_h, iv_h, vi_h, ii_h, ir_d, rv_d, iv_d, vi_d, ii_d)\nLEFT JOIN metas_seccion m ON UPPER(TRIM(m.seccion)) = UPPER(TRIM(v.seccion))\nON CONFLICT (periodo_id, seccion)\nDO UPDATE SET\n  total_examenes = EXCLUDED.total_examenes,\n  ingreso_resultado_horas = EXCLUDED.ingreso_resultado_horas,\n  resultado_validacion_horas = EXCLUDED.resultado_validacion_horas,\n  ingreso_validacion_horas = EXCLUDED.ingreso_validacion_horas,\n  validacion_impresion_horas = EXCLUDED.validacion_impresion_horas,\n  ingreso_impresion_horas = EXCLUDED.ingreso_impresion_horas,\n  ingreso_resultado_dias = EXCLUDED.ingreso_resultado_dias,\n  resultado_validacion_dias = EXCLUDED.resultado_validacion_dias,\n  ingreso_validacion_dias = EXCLUDED.ingreso_validacion_dias,\n  validacion_impresion_dias = EXCLUDED.validacion_impresion_dias,\n  ingreso_impresion_dias = EXCLUDED.ingreso_impresion_dias,\n  meta_dias = EXCLUDED.meta_dias,\n  eficacia = EXCLUDED.eficacia;\n`;\n\n// --- SQL: Borrar examenes previos de este periodo ---\nconst deleteExamsSQL = `\nDELETE FROM tiempos_examen\nWHERE periodo_id = (\n  SELECT id FROM periodos\n  WHERE fecha_inicio = '${fechaInicio}' AND fecha_fin = '${fechaFin}'\n);\n`;\n\n// --- SQL: Examenes ---\nlet examSQL = '';\nif (todosExamenes.length > 0) {\n  const examVals = todosExamenes.map(e =>\n    `('${esc(e.seccionPadre)}', '${esc(e.examen)}', ${e.total}, '${esc(e.ingRes)}', '${esc(e.resVal)}', '${esc(e.ingVal)}', '${esc(e.valImp)}', '${esc(e.ingImp)}', ${timeToDays(e.ingRes)}, ${timeToDays(e.resVal)}, ${timeToDays(e.ingVal)}, ${timeToDays(e.valImp)}, ${timeToDays(e.ingImp)})`\n  ).join(',\\n      ');\n\n  examSQL = `\nWITH periodo AS (\n  SELECT id FROM periodos\n  WHERE fecha_inicio = '${fechaInicio}' AND fecha_fin = '${fechaFin}'\n  LIMIT 1\n)\nINSERT INTO tiempos_examen (\n  periodo_id, seccion_padre, examen, total_examenes,\n  ingreso_resultado_horas, resultado_validacion_horas, ingreso_validacion_horas,\n  validacion_impresion_horas, ingreso_impresion_horas,\n  ingreso_resultado_dias, resultado_validacion_dias, ingreso_validacion_dias,\n  validacion_impresion_dias, ingreso_impresion_dias\n)\nSELECT\n  p.id, v.seccion_padre, v.examen, v.total_examenes,\n  v.ir_h, v.rv_h, v.iv_h, v.vi_h, v.ii_h,\n  v.ir_d, v.rv_d, v.iv_d, v.vi_d, v.ii_d\nFROM periodo p\nCROSS JOIN (VALUES\n      ${examVals}\n) AS v(seccion_padre, examen, total_examenes, ir_h, rv_h, iv_h, vi_h, ii_h, ir_d, rv_d, iv_d, vi_d, ii_d);\n`;\n}\n\nconst info = {\n  periodo: mes + ' ' + anio,\n  totalSecciones: secciones.length,\n  secciones: secciones.map(s => s.seccion),\n  totalExamenes: todosExamenes.length,\n  errores: errores.length > 0 ? errores : undefined,\n  fileName: fileName\n};\n\nconst output = [\n  { json: { valid: true, query: sectionSQL, info: info } }\n];\nif (todosExamenes.length > 0) {\n  output.push({ json: { valid: true, query: deleteExamsSQL } });\n  output.push({ json: { valid: true, query: examSQL } });\n}\nreturn output;\n\n} catch (err) {\n  return [{ json: { valid: false, errorMessage: 'Error procesando archivo: ' + err.message } }];\n}"
+      },
+      "id": "wh-uni-transform",
+      "name": "Parsear y Transformar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "wh-uni-if-valid",
+      "name": "Es Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "id": "wh-uni-db",
+      "name": "Guardar en BD",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [720, 200],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Lab PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const info = $('Parsear y Transformar').first().json.info || {};\nlet msg = 'Procesado: ' + (info.totalSecciones || 0) + ' secciones, ' + (info.totalExamenes || 0) + ' examenes - ' + (info.periodo || '');\nif (info.errores) msg += ' (advertencias: ' + info.errores.join('; ') + ')';\nreturn [{ json: {\n  success: true,\n  message: msg,\n  details: info\n}}];"
+      },
+      "id": "wh-uni-format-ok",
+      "name": "Formatear Exito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "wh-uni-respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1160, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const errorMsg = $input.first().json.errorMessage || 'Error desconocido';\nreturn [{ json: {\n  success: false,\n  message: errorMsg\n}}];"
+      },
+      "id": "wh-uni-format-err",
+      "name": "Formatear Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 440]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "wh-uni-respond-err",
+      "name": "Responder Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 440]
+    }
+  ],
+  "connections": {
+    "Recibir Archivo": {
+      "main": [
+        [
+          {
+            "node": "Parsear y Transformar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear y Transformar": {
+      "main": [
+        [
+          {
+            "node": "Es Valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es Valido?": {
+      "main": [
+        [
+          {
+            "node": "Guardar en BD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Formatear Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar en BD": {
+      "main": [
+        [
+          {
+            "node": "Formatear Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Exito": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Error": {
+      "main": [
+        [
+          {
+            "node": "Responder Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "lab-inmunoxxi"
+  }
+}

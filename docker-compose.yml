@@ -1,0 +1,99 @@
+services:
+  # ── Base de datos para la data del laboratorio ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: lab-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── n8n: Automatizacion de flujos ──
+  # Usa SQLite interno para su metadata (default).
+  # Se conecta a PostgreSQL solo para insertar data del lab.
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: lab-n8n
+    restart: unless-stopped
+    environment:
+      - GENERIC_TIMEZONE=America/Caracas
+      - TZ=America/Caracas
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - N8N_SECURE_COOKIE=false
+      - NODE_FUNCTION_ALLOW_BUILTIN=fs,path
+      - NODE_FUNCTION_ALLOW_EXTERNAL=xlsx
+      - N8N_RUNNERS_ALLOWED_BUILTIN_MODULES=fs,path
+      - N8N_RUNNERS_TASK_TIMEOUT=120
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./data:/home/node/.n8n-files
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Backend: API del portal ──
+  # Express + TypeScript. Maneja auth, usuarios y permisos.
+  backend:
+    build: ./backend
+    container_name: lab-backend
+    restart: unless-stopped
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET:-lab-inmunoxxi-jwt-secret-2026}
+      - PORT=3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Portal: Interfaz web para carga de archivos ──
+  # App React servida por nginx.
+  # Proxea webhooks a n8n y API a backend internamente.
+  portal:
+    build: ./portal
+    container_name: lab-portal
+    restart: unless-stopped
+    ports:
+      - "${PORTAL_PORT:-8080}:80"
+    depends_on:
+      - n8n
+      - backend
+
+  # ── Metabase: Dashboards y visualizaciones ──
+  # Reemplaza Power BI. Conecta directo a PostgreSQL.
+  metabase:
+    image: metabase/metabase:latest
+    container_name: lab-metabase
+    restart: unless-stopped
+    environment:
+      - MB_DB_TYPE=h2
+      - JAVA_TIMEZONE=America/Caracas
+    volumes:
+      - metabase_data:/metabase-data
+    ports:
+      - "${METABASE_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  n8n_data:
+  metabase_data:
