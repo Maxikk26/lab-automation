@@ -1,14 +1,14 @@
 # Deploy en Ubuntu Server
 
-Guia completa para instalar y correr Lab Automation en un servidor Ubuntu
-con dos ambientes (produccion y desarrollo) y tunel de Cloudflare.
+Guia completa para instalar y correr Lab Automation (produccion) en un servidor Ubuntu
+con tunel de Cloudflare. El ambiente de desarrollo corre local en tu maquina.
 
 ---
 
 ## 1. Requisitos del servidor
 
 - Ubuntu 22.04+ (Server o Desktop)
-- Minimo 4 GB RAM (5 contenedores Docker)
+- Minimo 2 GB RAM (5 contenedores Docker)
 - 20 GB disco libre
 - Acceso SSH
 
@@ -57,25 +57,11 @@ sudo apt install -y git
 
 ---
 
-## 3. Estructura de ambientes
+## 3. Clonar el proyecto
 
 ```bash
-mkdir -p ~/lab-automation/{prod,dev}
-```
-
-```
-~/lab-automation/
-+-- prod/     <-- puerto 8080 (futuro tunel Cloudflare)
-+-- dev/      <-- puerto 8081 (solo acceso local)
-```
-
-### Clonar el repo en ambos
-
-```bash
-cd ~/lab-automation/prod
-git clone <URL_DEL_REPO> .
-
-cd ~/lab-automation/dev
+mkdir -p ~/lab-automation
+cd ~/lab-automation
 git clone <URL_DEL_REPO> .
 ```
 
@@ -83,7 +69,7 @@ git clone <URL_DEL_REPO> .
 
 ## 4. Configurar variables de entorno
 
-### PROD (`~/lab-automation/prod/.env`)
+Crear `~/lab-automation/.env`:
 
 Generar contraseñas seguras:
 ```bash
@@ -106,74 +92,23 @@ PORTAL_PORT=8080
 METABASE_PORT=3000
 ```
 
-### DEV (`~/lab-automation/dev/.env`)
-
-```env
-POSTGRES_USER=labadmin
-POSTGRES_PASSWORD=devpassword123
-POSTGRES_DB=lab_tiempos_dev
-POSTGRES_PORT=5433
-
-N8N_USER=admin
-N8N_PASSWORD=devpassword123
-N8N_PORT=5679
-
-JWT_SECRET=dev-jwt-secret
-
-PORTAL_PORT=8081
-METABASE_PORT=3001
-```
-
 ---
 
-## 5. Evitar colision de contenedores (DEV)
-
-Crear `~/lab-automation/dev/docker-compose.override.yml`:
-
-```yaml
-services:
-  postgres:
-    container_name: lab-postgres-dev
-    ports:
-      - "5433:5432"
-  n8n:
-    container_name: lab-n8n-dev
-    ports:
-      - "5679:5678"
-  backend:
-    container_name: lab-backend-dev
-  portal:
-    container_name: lab-portal-dev
-    ports:
-      - "8081:80"
-  metabase:
-    container_name: lab-metabase-dev
-    ports:
-      - "3001:3000"
-```
-
----
-
-## 6. Levantar los ambientes
+## 5. Levantar el stack
 
 ```bash
-# PROD
-cd ~/lab-automation/prod
-docker compose up -d --build
-
-# DEV
-cd ~/lab-automation/dev
+cd ~/lab-automation
 docker compose up -d --build
 ```
 
-Verificar (deberias ver 10 contenedores: 5 prod + 5 dev):
+Verificar (deberias ver 5 contenedores):
 ```bash
 docker ps
 ```
 
 ---
 
-## 7. Firewall
+## 6. Firewall
 
 ```bash
 sudo apt install -y ufw
@@ -182,43 +117,48 @@ sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow ssh
 
-# Acceso en red local
-sudo ufw allow 8080    # portal prod
-sudo ufw allow 3000    # metabase prod
-# sudo ufw allow 8081  # portal dev (solo si necesitas acceso remoto)
-# sudo ufw allow 5678  # n8n prod (solo si necesitas acceso directo)
+# Temporales: acceso en red local antes de configurar el tunel
+sudo ufw allow 8080    # portal
+sudo ufw allow 3000    # metabase
 
 sudo ufw enable
 ```
 
-> Cuando configures el tunel de Cloudflare, podras cerrar los puertos 8080 y 3000
-> al publico porque el tunel conecta desde adentro (conexion saliente).
+> Cuando configures el tunel de Cloudflare (paso 9), cerraras estos puertos
+> porque el tunel conecta desde adentro (conexion saliente).
 
 ---
 
-## 8. Resumen de puertos
+## 7. Resumen de puertos
 
-| Servicio        | PROD  | DEV   |
-|-----------------|-------|-------|
-| Portal (nginx)  | 8080  | 8081  |
-| Metabase        | 3000  | 3001  |
-| PostgreSQL      | 5432  | 5433  |
-| n8n             | 5678  | 5679  |
-| Backend         | interno | interno |
+| Servicio        | Puerto |
+|-----------------|--------|
+| Portal (nginx)  | 8080   |
+| Metabase        | 3000   |
+| PostgreSQL      | 5432   |
+| n8n             | 5678   |
+| Backend         | interno |
 
 ---
 
-## 9. Post-instalacion
+## 8. Post-instalacion
 
 1. Verificar contenedores: `docker ps`
-2. Abrir n8n prod (`http://<IP>:5678`), crear credencial **"Lab PostgreSQL"**, importar workflows, activarlos
-3. Abrir Metabase (`http://<IP>:3000`), configurar conexion a PostgreSQL (ver docs/METABASE-GUIA.md)
-4. Abrir portal (`http://<IP>:8080`), login `admin`/`admin123`, **cambiar contrasena inmediatamente**
-5. Repetir pasos 2-4 para dev en puertos 5679, 3001, 8081
+2. Abrir n8n (`https://n8n.boheforge.dev` o `http://<IP>:5678`), crear credencial **"Lab PostgreSQL"**, importar workflows, activarlos
+3. Abrir Metabase (`https://lab-dashboard.boheforge.dev` o `http://<IP>:3000`), configurar conexion a PostgreSQL (ver docs/METABASE-GUIA.md)
+4. Abrir portal (`https://lab.boheforge.dev` o `http://<IP>:8080`), login `admin`/`admin123`, **cambiar contrasena inmediatamente**
 
 ---
 
-## 10. Cloudflare Tunnel (cuando tengas dominio)
+## 9. Cloudflare Tunnel
+
+### Subdominios
+
+| Subdominio | Servicio | Puerto local | Acceso |
+|---|---|---|---|
+| `lab.boheforge.dev` | React portal | 8080 | Publico |
+| `lab-dashboard.boheforge.dev` | Metabase | 3000 | Publico |
+| `n8n.boheforge.dev` | n8n | 5678 | Cloudflare Access (solo admin) |
 
 ### Instalar cloudflared
 
@@ -248,19 +188,36 @@ tunnel: <TUNNEL_UUID>
 credentials-file: /home/<tu_usuario>/.cloudflared/<TUNNEL_UUID>.json
 
 ingress:
-  - hostname: lab.tudominio.com
+  - hostname: lab.boheforge.dev
     service: http://localhost:8080
-  - hostname: dashboard.tudominio.com
+  - hostname: lab-dashboard.boheforge.dev
     service: http://localhost:3000
+  - hostname: n8n.boheforge.dev
+    service: http://localhost:5678
   - service: http_status:404
 ```
 
-### Registrar DNS y activar
+### Registrar DNS
 
 ```bash
-cloudflared tunnel route dns <TUNNEL_UUID> lab.tudominio.com
-cloudflared tunnel route dns <TUNNEL_UUID> dashboard.tudominio.com
+cloudflared tunnel route dns <TUNNEL_UUID> lab.boheforge.dev
+cloudflared tunnel route dns <TUNNEL_UUID> lab-dashboard.boheforge.dev
+cloudflared tunnel route dns <TUNNEL_UUID> n8n.boheforge.dev
+```
 
+### Proteger n8n con Cloudflare Access
+
+1. Ir a **Cloudflare Dashboard > Zero Trust > Access > Applications**
+2. Crear aplicacion:
+   - **Application domain:** `n8n.boheforge.dev`
+   - **Policy name:** "Solo admin"
+   - **Action:** Allow
+   - **Include rule:** Email = tu email personal
+3. Guardar. Cualquier acceso a `n8n.boheforge.dev` pedira autenticacion via email OTP antes de llegar a n8n.
+
+### Activar como servicio
+
+```bash
 sudo cloudflared service install
 sudo systemctl enable cloudflared
 sudo systemctl start cloudflared
@@ -273,9 +230,12 @@ sudo ufw delete allow 8080
 sudo ufw delete allow 3000
 ```
 
+> **Nota:** n8n nunca tuvo el puerto abierto en UFW, y ahora ademas
+> queda detras de Cloudflare Access. Doble capa de proteccion.
+
 ---
 
-## 11. Herramientas utiles (opcional)
+## 10. Herramientas utiles (opcional)
 
 ```bash
 # Monitoreo de recursos
