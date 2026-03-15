@@ -59,6 +59,8 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - JWT_SECRET=${JWT_SECRET:-lab-inmunoxxi-jwt-secret-2026}
       - PORT=3001
+    volumes:
+      - ./db-views:/app/db-views:ro
     depends_on:
       postgres:
         condition: service_healthy

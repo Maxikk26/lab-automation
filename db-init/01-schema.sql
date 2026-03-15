@@ -78,52 +78,11 @@ CREATE TABLE IF NOT EXISTS tiempos_examen (
     created_at                  TIMESTAMP DEFAULT NOW()
 );
 
--- Vista para reporte mensual con eficacia
-CREATE OR REPLACE VIEW v_reporte_mensual AS
-SELECT
-    p.anio,
-    p.mes,
-    p.fecha_inicio,
-    p.fecha_fin,
-    ts.seccion,
-    ts.total_examenes,
-    ts.ingreso_resultado_dias,
-    ts.resultado_validacion_dias,
-    ts.ingreso_validacion_dias,
-    ts.validacion_impresion_dias,
-    ts.ingreso_impresion_dias,
-    COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    ts.eficacia,
-    CASE
-        WHEN ts.eficacia IS NULL THEN 'SIN META'
-        WHEN ts.eficacia >= 1.0 THEN 'CUMPLE'
-        WHEN ts.eficacia >= 0.75 THEN 'ALERTA'
-        ELSE 'NO CUMPLE'
-    END AS estado_eficacia
-FROM tiempos_seccion ts
-JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-ORDER BY p.anio, p.fecha_inicio, ts.seccion;
-
--- Vista para tendencia anual
-CREATE OR REPLACE VIEW v_tendencia_anual AS
-SELECT
-    p.anio,
-    p.mes,
-    p.fecha_inicio,
-    ts.seccion,
-    ts.ingreso_impresion_dias AS dias_entrega,
-    COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    ts.eficacia
-FROM tiempos_seccion ts
-JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-ORDER BY p.anio, p.fecha_inicio, ts.seccion;
-
 -- Indices
 CREATE INDEX IF NOT EXISTS idx_tiempos_seccion_periodo ON tiempos_seccion(periodo_id);
 CREATE INDEX IF NOT EXISTS idx_tiempos_examen_periodo ON tiempos_examen(periodo_id);
 CREATE INDEX IF NOT EXISTS idx_periodos_anio_mes ON periodos(anio, mes);
+CREATE INDEX IF NOT EXISTS idx_tiempos_examen_seccion_padre ON tiempos_examen(seccion_padre);
 
 -- ============================================
 -- METAs por defecto

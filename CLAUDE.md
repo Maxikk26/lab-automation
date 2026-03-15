@@ -19,8 +19,10 @@ Portal (React + Nginx :8080)
 Five Docker services: `postgres`, `n8n`, `backend`, `portal`, `metabase`. All on the same Compose network. Nginx is the only public-facing entry point.
 
 **Database schemas:**
-- `tiempos_entrega` -- lab data tables (`periodos`, `metas_seccion`, `tiempos_seccion`, `tiempos_examen`) plus five Metabase views.
+- `tiempos_entrega` -- lab data tables (`periodos`, `metas_seccion`, `tiempos_seccion`, `tiempos_examen`) plus six Metabase views defined in `db-views/views.sql`.
 - `portal_config` -- app config (`usuarios`, `categorias`, `automatizaciones`, `usuario_automatizacion`).
+
+**Views workflow:** All views live in `db-views/views.sql` (single source of truth). The backend applies them automatically on startup via `backend/src/apply-views.ts`. To update views: edit `db-views/views.sql` → `docker compose restart backend`. No database wipe needed.
 
 **n8n Workflows (`n8n/workflows/`):**
 | File | Webhook path | Purpose |
