@@ -15,6 +15,7 @@ SELECT
     p.fecha_inicio,
     p.fecha_fin,
     ts.seccion,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
     ts.total_examenes,
     ts.ingreso_resultado_dias,
     ts.resultado_validacion_dias,
@@ -22,11 +23,21 @@ SELECT
     ts.validacion_impresion_dias,
     ts.ingreso_impresion_dias,
     COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    ts.eficacia,
     CASE
-        WHEN ts.eficacia IS NULL THEN 'SIN META'
-        WHEN ts.eficacia >= 1.0  THEN 'CUMPLE'
-        WHEN ts.eficacia >= 0.75 THEN 'ALERTA'
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NOT NULL
+             AND COALESCE(ts.meta_dias, ms.meta_dias) > 0
+             AND ts.ingreso_impresion_dias IS NOT NULL
+             AND ts.ingreso_impresion_dias > 0
+        THEN ROUND(COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
+        ELSE NULL
+    END AS eficacia,
+    CASE
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NULL
+             OR COALESCE(ts.meta_dias, ms.meta_dias) = 0 THEN 'SIN META'
+        WHEN ts.ingreso_impresion_dias IS NULL
+             OR ts.ingreso_impresion_dias = 0              THEN 'SIN DATOS'
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 1.0  THEN 'CUMPLE'
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 0.75 THEN 'ALERTA'
         ELSE 'NO CUMPLE'
     END AS estado_eficacia
 FROM tiempos_seccion ts
@@ -41,9 +52,17 @@ SELECT
     p.mes,
     p.fecha_inicio,
     ts.seccion,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
     ts.ingreso_impresion_dias AS dias_entrega,
     COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    ts.eficacia
+    CASE
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NOT NULL
+             AND COALESCE(ts.meta_dias, ms.meta_dias) > 0
+             AND ts.ingreso_impresion_dias IS NOT NULL
+             AND ts.ingreso_impresion_dias > 0
+        THEN ROUND(COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
+        ELSE NULL
+    END AS eficacia
 FROM tiempos_seccion ts
 JOIN periodos p ON p.id = ts.periodo_id
 LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
@@ -57,6 +76,7 @@ SELECT
     p.fecha_inicio,
     p.fecha_fin,
     te.seccion_padre,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
     te.examen,
     te.total_examenes,
     te.ingreso_resultado_horas,
@@ -95,6 +115,7 @@ SELECT
     p.fecha_inicio,
     p.fecha_fin,
     te.seccion_padre,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
     COALESCE(ms.meta_dias, 0) AS meta_dias,
     COUNT(*) AS total_pruebas_portafolio,
     COUNT(*) FILTER (
@@ -141,13 +162,14 @@ FROM tiempos_examen te
 JOIN periodos p ON p.id = te.periodo_id
 LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(te.seccion_padre))
 WHERE te.seccion_padre IS NOT NULL
-GROUP BY p.anio, p.mes, p.fecha_inicio, p.fecha_fin, te.seccion_padre, ms.meta_dias
+GROUP BY p.anio, p.mes, p.fecha_inicio, p.fecha_fin, te.seccion_padre, ms.meta_dias, ms.tipo
 ORDER BY p.fecha_inicio, te.seccion_padre;
 
 -- ── Vista 5: Promedio acumulado por seccion ───────────────────────────────────
 CREATE OR REPLACE VIEW v_promedio_acumulado AS
 SELECT
     ts.seccion,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
     p.anio,
     COALESCE(ms.meta_dias, 0) AS meta_dias,
     COUNT(*) AS meses_procesados,
@@ -172,7 +194,7 @@ FROM tiempos_seccion ts
 JOIN periodos p ON p.id = ts.periodo_id
 LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
 WHERE ts.ingreso_impresion_dias IS NOT NULL
-GROUP BY ts.seccion, p.anio, ms.meta_dias
+GROUP BY ts.seccion, p.anio, ms.meta_dias, ms.tipo
 ORDER BY p.anio, ts.seccion;
 
 -- ── Vista 6: Fases por seccion y mes ─────────────────────────────────────────
@@ -185,6 +207,7 @@ SELECT
     p.fecha_inicio,
     p.fecha_fin,
     ts.seccion,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
     ts.total_examenes,
     -- Las 5 fases
     ts.ingreso_resultado_dias    AS fase1_procesamiento,
@@ -192,13 +215,23 @@ SELECT
     ts.ingreso_validacion_dias   AS fase3_ingreso_validacion,
     ts.validacion_impresion_dias AS fase4_impresion,
     ts.ingreso_impresion_dias    AS fase5_total,
-    -- Meta y eficacia
+    -- Meta y eficacia (computados en la vista, no dependen de n8n)
     COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    ts.eficacia,
     CASE
-        WHEN ts.eficacia IS NULL THEN 'SIN META'
-        WHEN ts.eficacia >= 1.0  THEN 'CUMPLE'
-        WHEN ts.eficacia >= 0.75 THEN 'ALERTA'
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NOT NULL
+             AND COALESCE(ts.meta_dias, ms.meta_dias) > 0
+             AND ts.ingreso_impresion_dias IS NOT NULL
+             AND ts.ingreso_impresion_dias > 0
+        THEN ROUND(COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
+        ELSE NULL
+    END AS eficacia,
+    CASE
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NULL
+             OR COALESCE(ts.meta_dias, ms.meta_dias) = 0 THEN 'SIN META'
+        WHEN ts.ingreso_impresion_dias IS NULL
+             OR ts.ingreso_impresion_dias = 0              THEN 'SIN DATOS'
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 1.0  THEN 'CUMPLE'
+        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 0.75 THEN 'ALERTA'
         ELSE 'NO CUMPLE'
     END AS estado_eficacia,
     -- Porcentaje de cada fase sobre fase5_total
@@ -235,3 +268,31 @@ FROM tiempos_seccion ts
 JOIN periodos p ON p.id = ts.periodo_id
 LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
 ORDER BY p.anio, p.fecha_inicio, ts.seccion;
+
+-- ── Vista 7: Resumen global por periodo y tipo ────────────────────────────────
+-- Promedio ponderado (por total_examenes) de las 5 fases agrupado por periodo.
+-- Equivalente a la fila "Total" del reporte Enterprise que n8n descarta.
+CREATE OR REPLACE VIEW v_resumen_global AS
+SELECT
+    p.anio,
+    p.mes,
+    p.fecha_inicio,
+    p.fecha_fin,
+    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
+    SUM(ts.total_examenes) AS total_examenes,
+    ROUND(SUM(ts.ingreso_resultado_dias    * ts.total_examenes)
+        / NULLIF(SUM(ts.total_examenes), 0), 4) AS ingreso_resultado_dias,
+    ROUND(SUM(ts.resultado_validacion_dias * ts.total_examenes)
+        / NULLIF(SUM(ts.total_examenes), 0), 4) AS resultado_validacion_dias,
+    ROUND(SUM(ts.ingreso_validacion_dias   * ts.total_examenes)
+        / NULLIF(SUM(ts.total_examenes), 0), 4) AS ingreso_validacion_dias,
+    ROUND(SUM(ts.validacion_impresion_dias * ts.total_examenes)
+        / NULLIF(SUM(ts.total_examenes), 0), 4) AS validacion_impresion_dias,
+    ROUND(SUM(ts.ingreso_impresion_dias    * ts.total_examenes)
+        / NULLIF(SUM(ts.total_examenes), 0), 4) AS ingreso_impresion_dias
+FROM tiempos_seccion ts
+JOIN periodos p ON p.id = ts.periodo_id
+LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
+WHERE ts.ingreso_impresion_dias IS NOT NULL
+GROUP BY p.anio, p.mes, p.fecha_inicio, p.fecha_fin, ms.tipo
+ORDER BY p.fecha_inicio, ms.tipo;

@@ -1,0 +1,942 @@
+{
+  "collection_name": "Tiempos de Entrega",
+  "dashboard": {
+    "name": "Dashboard Tiempos de Entrega",
+    "description": null,
+    "parameters": [
+      {
+        "slug": "tipo",
+        "values_query_type": "list",
+        "name": "Tipo",
+        "isMultiSelect": false,
+        "type": "string/=",
+        "sectionId": "string",
+        "values_source_type": "card",
+        "id": "ce39dd37",
+        "values_source_config": {
+          "card_id": 40,
+          "value_field": [
+            "field",
+            "tipo",
+            {
+              "base-type": "type/Text"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Año",
+        "slug": "a%C3%B1o",
+        "id": "66f82374",
+        "type": "string/=",
+        "sectionId": "string",
+        "isMultiSelect": false,
+        "values_query_type": "list"
+      },
+      {
+        "slug": "mes",
+        "values_query_type": "list",
+        "name": "Mes",
+        "isMultiSelect": false,
+        "type": "string/=",
+        "sectionId": "string",
+        "values_source_type": "card",
+        "id": "1a00d860",
+        "values_source_config": {
+          "card_id": 40,
+          "value_field": [
+            "field",
+            "mes",
+            {
+              "base-type": "type/Text"
+            }
+          ]
+        }
+      },
+      {
+        "slug": "secci%C3%B3n",
+        "values_query_type": "list",
+        "name": "Sección",
+        "isMultiSelect": false,
+        "type": "string/=",
+        "sectionId": "string",
+        "values_source_type": "card",
+        "id": "935a9209",
+        "values_source_config": {
+          "card_id": 40,
+          "value_field": [
+            "field",
+            "seccion",
+            {
+              "base-type": "type/Text"
+            }
+          ]
+        }
+      }
+    ],
+    "dashcards": [
+      {
+        "card_name": "Resumen Global",
+        "card_id_local": 46,
+        "row": 0,
+        "col": 0,
+        "size_x": 12,
+        "size_y": 9,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 46,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 46,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "1a00d860",
+            "card_id": 46,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "mes"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {}
+      },
+      {
+        "card_name": "Reporte Mensual",
+        "card_id_local": 40,
+        "row": 9,
+        "col": 0,
+        "size_x": 24,
+        "size_y": 10,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 40,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 40,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "1a00d860",
+            "card_id": 40,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "mes"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "935a9209",
+            "card_id": 40,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "seccion"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {
+          "table.pivot_column": "anio",
+          "table.cell_column": "total_examenes",
+          "table.column_formatting": [
+            {
+              "columns": [
+                "estado_eficacia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "NO CUMPLE",
+              "color": "#EF8C8C",
+              "highlight_row": false
+            },
+            {
+              "columns": [
+                "estado_eficacia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "ALERTA",
+              "color": "#F9D45C",
+              "highlight_row": false
+            },
+            {
+              "columns": [
+                "estado_eficacia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "CUMPLE",
+              "color": "#88BF4D",
+              "highlight_row": false
+            }
+          ]
+        }
+      },
+      {
+        "card_name": "Tendencia Anual",
+        "card_id_local": 41,
+        "row": 19,
+        "col": 0,
+        "size_x": 12,
+        "size_y": 9,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 41,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 41,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "935a9209",
+            "card_id": 41,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "seccion"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {
+          "visualization": {
+            "display": "line",
+            "columnValuesMapping": {
+              "COLUMN_1": [
+                {
+                  "sourceId": "card:41",
+                  "originalName": "fecha_inicio",
+                  "name": "COLUMN_1"
+                }
+              ],
+              "COLUMN_2": [
+                {
+                  "sourceId": "card:41",
+                  "originalName": "dias_entrega",
+                  "name": "COLUMN_2"
+                }
+              ],
+              "COLUMN_3": [
+                {
+                  "sourceId": "card:41",
+                  "originalName": "seccion",
+                  "name": "COLUMN_3"
+                }
+              ]
+            },
+            "settings": {
+              "table.pivot_column": "anio",
+              "table.cell_column": "dias_entrega",
+              "graph.dimensions": [
+                "COLUMN_1",
+                "COLUMN_3"
+              ],
+              "graph.metrics": [
+                "COLUMN_2"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "card_name": "Exámenes por Sección",
+        "card_id_local": 42,
+        "row": 28,
+        "col": 0,
+        "size_x": 24,
+        "size_y": 9,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 42,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 42,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "1a00d860",
+            "card_id": 42,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "mes"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "935a9209",
+            "card_id": 42,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "seccion"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {}
+      },
+      {
+        "card_name": "Portafolio por Sección",
+        "card_id_local": 43,
+        "row": 37,
+        "col": 0,
+        "size_x": 24,
+        "size_y": 9,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 43,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 43,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "1a00d860",
+            "card_id": 43,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "mes"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "935a9209",
+            "card_id": 43,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "seccion"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {
+          "table.pivot_column": "anio",
+          "table.cell_column": "meta_dias",
+          "table.column_formatting": [
+            {
+              "columns": [
+                "estado_tolerancia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "CRITICO",
+              "color": "#EF8C8C",
+              "highlight_row": false
+            },
+            {
+              "columns": [
+                "estado_tolerancia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "ALARMA",
+              "color": "#F2A86F",
+              "highlight_row": false
+            },
+            {
+              "columns": [
+                "estado_tolerancia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "ALERTA",
+              "color": "#F9D45C",
+              "highlight_row": false
+            },
+            {
+              "columns": [
+                "estado_tolerancia"
+              ],
+              "type": "single",
+              "operator": "=",
+              "value": "EN RANGO",
+              "color": "#88BF4D",
+              "highlight_row": false
+            }
+          ]
+        }
+      },
+      {
+        "card_name": "Promedio Acumulado",
+        "card_id_local": 44,
+        "row": 19,
+        "col": 12,
+        "size_x": 12,
+        "size_y": 9,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 44,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 44,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "935a9209",
+            "card_id": 44,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "seccion"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {
+          "visualization": {
+            "display": "bar",
+            "columnValuesMapping": {
+              "COLUMN_1": [
+                {
+                  "sourceId": "card:44",
+                  "originalName": "seccion",
+                  "name": "COLUMN_1"
+                }
+              ],
+              "COLUMN_2": [
+                {
+                  "sourceId": "card:44",
+                  "originalName": "promedio_acumulado_dias",
+                  "name": "COLUMN_2"
+                }
+              ],
+              "COLUMN_3": [
+                {
+                  "sourceId": "card:44",
+                  "originalName": "tipo",
+                  "name": "COLUMN_3"
+                }
+              ]
+            },
+            "settings": {
+              "table.pivot_column": "tipo",
+              "table.cell_column": "anio",
+              "graph.metrics": [
+                "COLUMN_2"
+              ],
+              "graph.dimensions": [
+                "COLUMN_1",
+                "COLUMN_3"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "card_name": "Fases por Sección",
+        "card_id_local": 45,
+        "row": 0,
+        "col": 12,
+        "size_x": 12,
+        "size_y": 9,
+        "parameter_mappings": [
+          {
+            "parameter_id": "ce39dd37",
+            "card_id": 45,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "tipo"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "66f82374",
+            "card_id": 45,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "anio"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "1a00d860",
+            "card_id": 45,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "mes"
+              ]
+            ]
+          },
+          {
+            "parameter_id": "935a9209",
+            "card_id": 45,
+            "target": [
+              "variable",
+              [
+                "template-tag",
+                "seccion"
+              ]
+            ]
+          }
+        ],
+        "visualization_settings": {
+          "visualization": {
+            "display": "bar",
+            "columnValuesMapping": {
+              "COLUMN_1": [
+                {
+                  "sourceId": "card:45",
+                  "originalName": "seccion",
+                  "name": "COLUMN_1"
+                }
+              ],
+              "COLUMN_2": [
+                {
+                  "sourceId": "card:45",
+                  "originalName": "fase1_procesamiento",
+                  "name": "COLUMN_2"
+                }
+              ],
+              "COLUMN_3": [
+                {
+                  "sourceId": "card:45",
+                  "originalName": "fase2_validacion",
+                  "name": "COLUMN_3"
+                }
+              ],
+              "COLUMN_4": [
+                {
+                  "sourceId": "card:45",
+                  "originalName": "fase3_ingreso_validacion",
+                  "name": "COLUMN_4"
+                }
+              ],
+              "COLUMN_5": [
+                {
+                  "sourceId": "card:45",
+                  "originalName": "fase4_impresion",
+                  "name": "COLUMN_5"
+                }
+              ]
+            },
+            "settings": {
+              "table.pivot_column": "anio",
+              "table.cell_column": "total_examenes",
+              "graph.metrics": [
+                "COLUMN_2",
+                "COLUMN_3",
+                "COLUMN_4",
+                "COLUMN_5"
+              ],
+              "graph.dimensions": [
+                "COLUMN_1"
+              ],
+              "stackable.stack_type": "stacked"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "cards": [
+    {
+      "name": "Reporte Mensual",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_reporte_mensual\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND mes = {{mes}}]]\n  [[AND seccion = {{seccion}}]]\nORDER BY anio DESC, mes DESC, seccion",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "name": "tipo",
+                "id": "8c31410a-5592-4a6c-a2ff-d37037c496ec",
+                "type": "text",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "name": "anio",
+                "id": "398c3b7a-7c26-42a7-9b4b-c76dddc297bf",
+                "type": "text",
+                "display-name": "Anio"
+              },
+              "mes": {
+                "name": "mes",
+                "id": "efdf45d8-603a-417a-97aa-60ab366880b5",
+                "type": "text",
+                "display-name": "Mes"
+              },
+              "seccion": {
+                "name": "seccion",
+                "id": "939e80c7-f4d6-4e2d-b220-6f898cfb72ad",
+                "type": "text",
+                "display-name": "Seccion"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "anio",
+        "table.cell_column": "total_examenes"
+      }
+    },
+    {
+      "name": "Tendencia Anual",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_tendencia_anual\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND seccion = {{seccion}}]]\nORDER BY anio, fecha_inicio, seccion",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "id": "18e8a75a-f3a4-4b8c-bfb4-c46081274dc7",
+                "type": "text",
+                "name": "tipo",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "id": "c8fc8243-9bd0-4f01-9997-8c8b14d44629",
+                "type": "text",
+                "name": "anio",
+                "display-name": "Anio"
+              },
+              "seccion": {
+                "id": "58d25244-c3ab-42d7-b635-958bba1257af",
+                "type": "text",
+                "name": "seccion",
+                "display-name": "Seccion"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "anio",
+        "table.cell_column": "dias_entrega"
+      }
+    },
+    {
+      "name": "Exámenes por Sección",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_examenes_seccion\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND mes = {{mes}}]]\n  [[AND seccion = {{seccion}}]]",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "name": "tipo",
+                "id": "af48798f-150a-42a4-8aff-bf4ae4af462a",
+                "type": "text",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "name": "anio",
+                "id": "da21fcad-68dd-4d7b-9869-17b854cb4185",
+                "type": "text",
+                "display-name": "Anio"
+              },
+              "mes": {
+                "name": "mes",
+                "id": "8edf2c5a-e8bb-4515-b52d-c97b54aac857",
+                "type": "text",
+                "display-name": "Mes"
+              },
+              "seccion": {
+                "name": "seccion",
+                "id": "32fe366b-fafa-40c8-90aa-4d5ae0c6967e",
+                "type": "text",
+                "display-name": "Seccion"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "anio",
+        "table.cell_column": "total_examenes"
+      }
+    },
+    {
+      "name": "Portafolio por Sección",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_portafolio_seccion\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND mes = {{mes}}]]\n  [[AND seccion = {{seccion}}]]",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "name": "tipo",
+                "id": "6cda6ff4-9d16-46f0-b9d4-7e451239432c",
+                "type": "text",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "name": "anio",
+                "id": "554aa824-9be8-4c3f-a900-610fcc86d1c2",
+                "type": "text",
+                "display-name": "Anio"
+              },
+              "mes": {
+                "name": "mes",
+                "id": "333a59de-e620-4c77-aedd-fb8475a1516c",
+                "type": "text",
+                "display-name": "Mes"
+              },
+              "seccion": {
+                "name": "seccion",
+                "id": "aba5d207-5848-4759-950a-215f2a60a7c1",
+                "type": "text",
+                "display-name": "Seccion"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "anio",
+        "table.cell_column": "meta_dias"
+      }
+    },
+    {
+      "name": "Promedio Acumulado",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_promedio_acumulado\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND seccion = {{seccion}}]]",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "name": "tipo",
+                "id": "41328fb2-3e11-40dc-86de-953f1d01cfb7",
+                "type": "text",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "name": "anio",
+                "id": "4b5d58a2-e137-42e5-9f89-15d15843641e",
+                "type": "text",
+                "display-name": "Anio"
+              },
+              "seccion": {
+                "name": "seccion",
+                "id": "7dd4e258-8a51-40f7-aeb6-0c24c593ee4c",
+                "type": "text",
+                "display-name": "Seccion"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "tipo",
+        "table.cell_column": "anio"
+      }
+    },
+    {
+      "name": "Fases por Sección",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_fases_seccion\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND mes = {{mes}}]]\n  [[AND seccion = {{seccion}}]]",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "name": "tipo",
+                "id": "208386bf-5f9c-4d50-ade1-620f48dbd291",
+                "type": "text",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "name": "anio",
+                "id": "89ac2e71-c591-447f-b9dc-12a9b7c558c4",
+                "type": "text",
+                "display-name": "Anio"
+              },
+              "mes": {
+                "name": "mes",
+                "id": "d833a28a-5b65-4744-9f31-64d8d1a8477d",
+                "type": "text",
+                "display-name": "Mes"
+              },
+              "seccion": {
+                "name": "seccion",
+                "id": "3df50903-ccad-49d7-bc5c-658eb647f448",
+                "type": "text",
+                "display-name": "Seccion"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "anio",
+        "table.cell_column": "total_examenes"
+      }
+    },
+    {
+      "name": "Resumen Global",
+      "description": null,
+      "display": "table",
+      "dataset_query": {
+        "lib/type": "mbql/query",
+        "database": 2,
+        "stages": [
+          {
+            "native": "SELECT * FROM tiempos_entrega.v_resumen_global\nWHERE 1=1\n  [[AND tipo = {{tipo}}]]\n  [[AND anio = {{anio}}]]\n  [[AND mes = {{mes}}]]",
+            "lib/type": "mbql.stage/native",
+            "template-tags": {
+              "tipo": {
+                "name": "tipo",
+                "id": "66ba7b51-d2df-43fb-9594-466090ec53ad",
+                "type": "text",
+                "display-name": "Tipo"
+              },
+              "anio": {
+                "name": "anio",
+                "id": "bf36aca0-93f5-47fe-b78d-f0089aa383ea",
+                "type": "text",
+                "display-name": "Anio"
+              },
+              "mes": {
+                "name": "mes",
+                "id": "610a2a49-f243-448b-9e31-a4c60c85a6cc",
+                "type": "text",
+                "display-name": "Mes"
+              }
+            }
+          }
+        ]
+      },
+      "visualization_settings": {
+        "table.pivot_column": "anio",
+        "table.cell_column": "total_examenes"
+      }
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 import pool from './db.js';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 function findViewsFile(): string {
   const candidates = [

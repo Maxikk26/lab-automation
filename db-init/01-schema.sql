@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS metas_seccion (
     id          SERIAL PRIMARY KEY,
     seccion     VARCHAR(255) NOT NULL UNIQUE,
     meta_dias   NUMERIC(10,4) NOT NULL,
+    tipo        VARCHAR(20) NOT NULL DEFAULT 'INMUNOXXI',
     updated_at  TIMESTAMP DEFAULT NOW()
 );
 
@@ -87,24 +88,24 @@ CREATE INDEX IF NOT EXISTS idx_tiempos_examen_seccion_padre ON tiempos_examen(se
 -- ============================================
 -- METAs por defecto
 -- ============================================
-INSERT INTO metas_seccion (seccion, meta_dias) VALUES
-    ('INMUNODIAGNÓSTICO',               7.0),
-    ('PRUEBAS ESPECIALES',              5.0),
-    ('QUÍMICA',                         0.5),
-    ('HEMOSTASIA Y TROMBOSIS',          0.5),
-    ('HEMATOLOGÍA',                     0.5),
-    ('CITOMETRIA',                      0.0),
-    ('INHIBIDOR LUPICO',                5.0),
-    ('UROANÁLISIS',                     0.5),
-    ('LIQUIDO SINOVIAL',                5.0),
-    ('BIOLOGIA MOLECULAR',             10.0),
-    ('PRUEBAS ESPECIALES 3-MP',         5.0),
-    ('PRUEBAS ESPECIALES 2-SL',         5.0),
-    ('COVID-19',                        1.0),
-    ('QUEST DIAGNOSTICS',              15.0),
-    ('MAYO MEDICAL LAB',               15.0),
-    ('UNIDIN',                         10.0),
-    ('INMUNODIAGNOSTICO 2',             7.0),
-    ('ETIQUETAS - HISTORIAL',           1.0),
-    ('EXAMINA',                         2.0)
+INSERT INTO metas_seccion (seccion, meta_dias, tipo) VALUES
+    ('INMUNODIAGNÓSTICO',               7.0,  'INMUNOXXI'),
+    ('PRUEBAS ESPECIALES',              3.0,  'INMUNOXXI'),
+    ('QUÍMICA',                         0.5,  'INMUNOXXI'),
+    ('HEMOSTASIA Y TROMBOSIS',          3.0,  'INMUNOXXI'),
+    ('HEMATOLOGÍA',                     0.5,  'INMUNOXXI'),
+    ('CITOMETRIA',                      0.0,  'INMUNOXXI'),
+    ('INHIBIDOR LUPICO',                5.0,  'INMUNOXXI'),
+    ('UROANÁLISIS',                     0.5,  'INMUNOXXI'),
+    ('LIQUIDO SINOVIAL',                3.0,  'INMUNOXXI'),
+    ('BIOLOGIA MOLECULAR',              7.0,  'INMUNOXXI'),
+    ('COVID-19',                        1.0,  'INMUNOXXI'),
+    ('ETIQUETAS - HISTORIAL',           1.0,  'INMUNOXXI'),
+    ('PRUEBAS ESPECIALES 3-MP',         5.0,  'REFERIDO'),
+    ('PRUEBAS ESPECIALES 2-SL',         5.0,  'REFERIDO'),
+    ('QUEST DIAGNOSTICS',              15.0,  'REFERIDO'),
+    ('MAYO MEDICAL LAB',               15.0,  'REFERIDO'),
+    ('UNIDIN',                         10.0,  'REFERIDO'),
+    ('INMUNODIAGNOSTICO 2',             5.0,  'REFERIDO'),
+    ('EXAMINA',                         2.0,  'REFERIDO')
 ON CONFLICT (seccion) DO NOTHING;
