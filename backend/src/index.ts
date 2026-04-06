@@ -3,6 +3,9 @@ import cors from 'cors';
 import loginRouter from './routes/login.js';
 import automatizacionesRouter from './routes/automatizaciones.js';
 import usuariosRouter from './routes/usuarios.js';
+import metasRouter from './routes/metas.js';
+import exclusionesRouter from './routes/exclusiones.js';
+import toleranciasRouter from './routes/tolerancias.js';
 import { applyViews } from './apply-views.js';
 
 const app = express();
@@ -14,6 +17,9 @@ app.use(express.json());
 app.use('/api/portal', loginRouter);
 app.use('/api/portal', automatizacionesRouter);
 app.use('/api/portal', usuariosRouter);
+app.use('/api/portal', metasRouter);
+app.use('/api/portal', exclusionesRouter);
+app.use('/api/portal', toleranciasRouter);
 
 app.get('/api/portal/health', (_req, res) => {
   res.json({ status: 'ok' });

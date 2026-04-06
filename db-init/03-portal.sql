@@ -48,10 +48,13 @@ CREATE TABLE IF NOT EXISTS automatizaciones (
     created_at      TIMESTAMP DEFAULT NOW()
 );
 
--- ── Tabla puente: que usuario ve que automatizacion ──
+-- ── Tabla puente: que usuario ve que automatizacion (con permisos granulares) ──
 CREATE TABLE IF NOT EXISTS usuario_automatizacion (
-    usuario_id          INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    automatizacion_id   INTEGER NOT NULL REFERENCES automatizaciones(id) ON DELETE CASCADE,
+    usuario_id              INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    automatizacion_id       INTEGER NOT NULL REFERENCES automatizaciones(id) ON DELETE CASCADE,
+    puede_cargar            BOOLEAN NOT NULL DEFAULT true,
+    puede_editar_metas      BOOLEAN NOT NULL DEFAULT false,
+    puede_editar_examenes   BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (usuario_id, automatizacion_id)
 );
 

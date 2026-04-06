@@ -12,7 +12,13 @@ router.get('/admin/usuarios', authenticate, requireAdmin, async (_req, res) => {
          u.id, u.username, u.nombre, u.es_admin, u.activo, u.created_at,
          COALESCE(
            json_agg(
-             json_build_object('id', a.id, 'nombre', a.nombre)
+             json_build_object(
+               'id', a.id,
+               'nombre', a.nombre,
+               'puede_cargar', ua.puede_cargar,
+               'puede_editar_metas', ua.puede_editar_metas,
+               'puede_editar_examenes', ua.puede_editar_examenes
+             )
            ) FILTER (WHERE a.id IS NOT NULL),
            '[]'
          ) AS automatizaciones
@@ -33,12 +39,18 @@ router.get('/admin/usuarios', authenticate, requireAdmin, async (_req, res) => {
 router.post('/admin/usuarios/save', authenticate, requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { id, username, nombre, password, es_admin, activo, automatizacion_ids } = req.body;
+    const { id, username, nombre, password, es_admin, activo, automatizaciones, automatizacion_ids } = req.body;
 
     if (!username?.trim() || !nombre?.trim()) {
       res.status(400).json({ success: false, message: 'Usuario y nombre son requeridos' });
       return;
     }
+
+    // Soporte para formato nuevo (automatizaciones con permisos) y legacy (automatizacion_ids)
+    const perms: Array<{ id: number; puede_cargar: boolean; puede_editar_metas: boolean; puede_editar_examenes: boolean }> =
+      automatizaciones ?? (automatizacion_ids || []).map((aid: number) => ({
+        id: aid, puede_cargar: true, puede_editar_metas: false, puede_editar_examenes: false,
+      }));
 
     await client.query('BEGIN');
 
@@ -66,11 +78,12 @@ router.post('/admin/usuarios/save', authenticate, requireAdmin, async (req, res)
         'DELETE FROM portal_config.usuario_automatizacion WHERE usuario_id = $1',
         [id]
       );
-      if (automatizacion_ids?.length > 0) {
-        const values = automatizacion_ids.map((_: number, i: number) => `($1, $${i + 2})`).join(', ');
+      for (const p of perms) {
         await client.query(
-          `INSERT INTO portal_config.usuario_automatizacion (usuario_id, automatizacion_id) VALUES ${values}`,
-          [id, ...automatizacion_ids]
+          `INSERT INTO portal_config.usuario_automatizacion
+             (usuario_id, automatizacion_id, puede_cargar, puede_editar_metas, puede_editar_examenes)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, p.id, p.puede_cargar !== false, p.puede_editar_metas === true, p.puede_editar_examenes === true]
         );
       }
     } else {
@@ -90,11 +103,12 @@ router.post('/admin/usuarios/save', authenticate, requireAdmin, async (req, res)
       );
       const newId = rows[0].id;
 
-      if (automatizacion_ids?.length > 0) {
-        const values = automatizacion_ids.map((_: number, i: number) => `($1, $${i + 2})`).join(', ');
+      for (const p of perms) {
         await client.query(
-          `INSERT INTO portal_config.usuario_automatizacion (usuario_id, automatizacion_id) VALUES ${values}`,
-          [newId, ...automatizacion_ids]
+          `INSERT INTO portal_config.usuario_automatizacion
+             (usuario_id, automatizacion_id, puede_cargar, puede_editar_metas, puede_editar_examenes)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [newId, p.id, p.puede_cargar !== false, p.puede_editar_metas === true, p.puede_editar_examenes === true]
         );
       }
     }

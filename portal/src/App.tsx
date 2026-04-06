@@ -5,6 +5,9 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import UploadPage from './pages/UploadPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import MetasPage from './pages/MetasPage';
+import ExclusionesPage from './pages/ExclusionesPage';
+import ToleranciasPage from './pages/ToleranciasPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoutes() {
@@ -26,6 +29,9 @@ function ProtectedRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/upload/:workflowId" element={<UploadPage />} />
         <Route path="/admin/usuarios" element={<AdminUsersPage />} />
+        <Route path="/admin/metas" element={<MetasPage />} />
+        <Route path="/admin/exclusiones" element={<ExclusionesPage />} />
+        <Route path="/admin/tolerancias" element={<ToleranciasPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -7,6 +7,9 @@ import {
   Users,
   LogOut,
   ChevronDown,
+  Target,
+  ListX,
+  Gauge,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -33,13 +36,22 @@ function groupByCategory(workflows: WorkflowConfig[]): CategoryGroup[] {
     });
 }
 
+const navLink = ({ isActive }: { isActive: boolean }) =>
+  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-blue-50 text-blue-700'
+      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+  }`;
+
 export default function Sidebar() {
-  const { user, workflows, logout } = useAuth();
+  const { user, workflows, logout, canEditMetas, canEditExamenes } = useAuth();
   const groups = groupByCategory(workflows);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const toggle = (cat: string) =>
     setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }));
+
+  const canConfigTE = canEditMetas || canEditExamenes;
 
   return (
     <aside className="hidden w-64 flex-shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
@@ -52,21 +64,12 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            `mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-            }`
-          }
-        >
+        <NavLink to="/" end className={navLink}>
           <Home className="h-4 w-4" />
           Inicio
         </NavLink>
 
+        {/* Workflow categories */}
         {groups.map((group) => (
           <div key={group.name} className="mt-3">
             <button
@@ -88,13 +91,7 @@ export default function Sidebar() {
                   <NavLink
                     key={wf.id}
                     to={`/upload/${wf.id}`}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                      }`
-                    }
+                    className={navLink}
                   >
                     <Upload className="h-4 w-4" />
                     {wf.nombre}
@@ -105,37 +102,71 @@ export default function Sidebar() {
           </div>
         ))}
 
-        <div className="my-4 border-t border-slate-200" />
+        {/* Configuración específica de Tiempos de Entrega */}
+        {canConfigTE && (
+          <>
+            <div className="my-4 border-t border-slate-200" />
+            <button
+              onClick={() => toggle('__config_te__')}
+              className="flex w-full items-center justify-between px-2 py-1"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Config. T. de Entrega
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                  collapsed['__config_te__'] ? '-rotate-90' : ''
+                }`}
+              />
+            </button>
+            {!collapsed['__config_te__'] && (
+              <div className="mt-1 space-y-0.5">
+                {canEditMetas && (
+                  <NavLink to="/admin/metas" className={navLink}>
+                    <Target className="h-4 w-4" />
+                    Metas por Seccion
+                  </NavLink>
+                )}
+                {canEditExamenes && (
+                  <NavLink to="/admin/exclusiones" className={navLink}>
+                    <ListX className="h-4 w-4" />
+                    Examenes Excluidos
+                  </NavLink>
+                )}
+                {canEditMetas && (
+                  <NavLink to="/admin/tolerancias" className={navLink}>
+                    <Gauge className="h-4 w-4" />
+                    Tolerancias
+                  </NavLink>
+                )}
+              </div>
+            )}
+          </>
+        )}
 
+        {/* Herramientas */}
+        <div className="my-4 border-t border-slate-200" />
         <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
           Herramientas
         </p>
         <a
-          href="/n8n/"
+          href="https://lab-dashboard.boheforge.dev"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
         >
           <BarChart3 className="h-4 w-4" />
-          n8n - Flujos
+          Metabase
         </a>
 
+        {/* Administración global (solo admins) */}
         {user?.es_admin && (
           <>
             <div className="my-4 border-t border-slate-200" />
             <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
               Administracion
             </p>
-            <NavLink
-              to="/admin/usuarios"
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`
-              }
-            >
+            <NavLink to="/admin/usuarios" className={navLink}>
               <Users className="h-4 w-4" />
               Gestion de Usuarios
             </NavLink>

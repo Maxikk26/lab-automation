@@ -17,6 +17,13 @@ import { useAuth } from '../context/AuthContext';
 import { fetchUsuarios, saveUsuario, deleteUsuario } from '../api';
 import type { UserDetail, WorkflowConfig } from '../types';
 
+interface WfPerm {
+  id: number;
+  puede_cargar: boolean;
+  puede_editar_metas: boolean;
+  puede_editar_examenes: boolean;
+}
+
 interface UserForm {
   id?: number;
   username: string;
@@ -24,7 +31,7 @@ interface UserForm {
   password: string;
   es_admin: boolean;
   activo: boolean;
-  automatizacion_ids: number[];
+  automatizaciones: WfPerm[];
 }
 
 const emptyForm: UserForm = {
@@ -33,7 +40,7 @@ const emptyForm: UserForm = {
   password: '',
   es_admin: false,
   activo: true,
-  automatizacion_ids: [],
+  automatizaciones: [],
 };
 
 export default function AdminUsersPage() {
@@ -76,7 +83,12 @@ export default function AdminUsersPage() {
       password: '',
       es_admin: u.es_admin,
       activo: u.activo,
-      automatizacion_ids: u.automatizaciones.map((a) => a.id),
+      automatizaciones: u.automatizaciones.map((a) => ({
+        id: a.id,
+        puede_cargar: a.puede_cargar ?? true,
+        puede_editar_metas: a.puede_editar_metas ?? false,
+        puede_editar_examenes: a.puede_editar_examenes ?? false,
+      })),
     });
     setError('');
     setShowPassword(false);
@@ -100,7 +112,7 @@ export default function AdminUsersPage() {
         nombre: editing.nombre,
         es_admin: editing.es_admin,
         activo: editing.activo,
-        automatizacion_ids: editing.automatizacion_ids,
+        automatizaciones: editing.automatizaciones,
       };
       if (editing.id) payload.id = editing.id;
       if (editing.password) payload.password = editing.password;
@@ -128,10 +140,27 @@ export default function AdminUsersPage() {
     if (!editing) return;
     setEditing((prev) => {
       if (!prev) return prev;
-      const ids = prev.automatizacion_ids.includes(id)
-        ? prev.automatizacion_ids.filter((a) => a !== id)
-        : [...prev.automatizacion_ids, id];
-      return { ...prev, automatizacion_ids: ids };
+      const exists = prev.automatizaciones.find((a) => a.id === id);
+      if (exists) {
+        return { ...prev, automatizaciones: prev.automatizaciones.filter((a) => a.id !== id) };
+      }
+      return {
+        ...prev,
+        automatizaciones: [...prev.automatizaciones, { id, puede_cargar: true, puede_editar_metas: false, puede_editar_examenes: false }],
+      };
+    });
+  };
+
+  const toggleWfPerm = (wfId: number, perm: keyof Omit<WfPerm, 'id'>) => {
+    if (!editing) return;
+    setEditing((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        automatizaciones: prev.automatizaciones.map((a) =>
+          a.id === wfId ? { ...a, [perm]: !a[perm] } : a
+        ),
+      };
     });
   };
 
@@ -265,21 +294,45 @@ export default function AdminUsersPage() {
                     <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
                       {group.name}
                     </p>
-                    <div className="grid gap-1 sm:grid-cols-2">
-                      {group.items.map((wf) => (
-                        <label
-                          key={wf.id}
-                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-white"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={editing.automatizacion_ids.includes(wf.id)}
-                            onChange={() => toggleAutomatizacion(wf.id)}
-                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          {wf.nombre}
-                        </label>
-                      ))}
+                    <div className="space-y-1">
+                      {group.items.map((wf) => {
+                        const assigned = editing.automatizaciones.find((a) => a.id === wf.id);
+                        return (
+                          <div key={wf.id} className="rounded-lg px-3 py-2 hover:bg-white">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={!!assigned}
+                                onChange={() => toggleAutomatizacion(wf.id)}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              {wf.nombre}
+                            </label>
+                            {assigned && (
+                              <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                                <label className="flex items-center gap-1">
+                                  <input type="checkbox" checked={assigned.puede_cargar}
+                                    onChange={() => toggleWfPerm(wf.id, 'puede_cargar')}
+                                    className="h-3 w-3 rounded border-slate-300 text-blue-600" />
+                                  Cargar
+                                </label>
+                                <label className="flex items-center gap-1">
+                                  <input type="checkbox" checked={assigned.puede_editar_metas}
+                                    onChange={() => toggleWfPerm(wf.id, 'puede_editar_metas')}
+                                    className="h-3 w-3 rounded border-slate-300 text-blue-600" />
+                                  Editar Metas
+                                </label>
+                                <label className="flex items-center gap-1">
+                                  <input type="checkbox" checked={assigned.puede_editar_examenes}
+                                    onChange={() => toggleWfPerm(wf.id, 'puede_editar_examenes')}
+                                    className="h-3 w-3 rounded border-slate-300 text-blue-600" />
+                                  Editar Examenes
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

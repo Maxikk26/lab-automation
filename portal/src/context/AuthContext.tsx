@@ -14,6 +14,9 @@ interface AuthContextType {
   token: string | null;
   workflows: WorkflowConfig[];
   loading: boolean;
+  canEditMetas: boolean;
+  canEditExamenes: boolean;
+  canAccessAdmin: boolean;
   login: (username: string, password: string) => Promise<string | null>;
   logout: () => void;
   refreshWorkflows: () => Promise<void>;
@@ -101,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const canEditMetas = user?.es_admin || user?.puede_editar_metas || false;
+  const canEditExamenes = user?.es_admin || user?.puede_editar_examenes || false;
+  const canAccessAdmin = user?.es_admin || canEditMetas || canEditExamenes;
+
   return (
     <AuthContext.Provider
       value={{
@@ -108,6 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         workflows,
         loading,
+        canEditMetas,
+        canEditExamenes,
+        canAccessAdmin,
         login,
         logout: clearSession,
         refreshWorkflows: loadWorkflows,

@@ -4,255 +4,122 @@
 -- Fuente unica de vistas. Aplicadas por el backend
 -- al arrancar: editar aqui + restart backend.
 -- ============================================
+-- Convenciones de nombres:
+--   Fases: procesamiento_dias | validacion_dias | proc_y_validacion_dias | impresion_dias | total_dias
+--   Meta:  COALESCE(metas_periodo, tiempos_seccion.meta_dias, metas_seccion)
+--   Exclusiones: LEFT JOIN examenes_excluidos + WHERE ee.id IS NULL
+--   Tolerancias: LEFT JOIN config_tolerancias (periodo) + config_tolerancias (default)
+-- ============================================
 
 SET search_path TO tiempos_entrega, public;
 
--- ── Vista 1: Reporte mensual con eficacia ─────────────────────────────────────
-CREATE OR REPLACE VIEW v_reporte_mensual AS
-SELECT
-    p.anio,
-    p.mes,
-    p.fecha_inicio,
-    p.fecha_fin,
-    ts.seccion,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
-    ts.total_examenes,
-    ts.ingreso_resultado_dias,
-    ts.resultado_validacion_dias,
-    ts.ingreso_validacion_dias,
-    ts.validacion_impresion_dias,
-    ts.ingreso_impresion_dias,
-    COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    CASE
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NOT NULL
-             AND COALESCE(ts.meta_dias, ms.meta_dias) > 0
-             AND ts.ingreso_impresion_dias IS NOT NULL
-             AND ts.ingreso_impresion_dias > 0
-        THEN ROUND(COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
-        ELSE NULL
-    END AS eficacia,
-    CASE
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NULL
-             OR COALESCE(ts.meta_dias, ms.meta_dias) = 0 THEN 'SIN META'
-        WHEN ts.ingreso_impresion_dias IS NULL
-             OR ts.ingreso_impresion_dias = 0              THEN 'SIN DATOS'
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 1.0  THEN 'CUMPLE'
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 0.75 THEN 'ALERTA'
-        ELSE 'NO CUMPLE'
-    END AS estado_eficacia
-FROM tiempos_seccion ts
-JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-ORDER BY p.anio, p.fecha_inicio, ts.seccion;
+-- Eliminar todas las vistas para poder recrearlas con columnas actualizadas
+DROP VIEW IF EXISTS v_resumen_global;
+DROP VIEW IF EXISTS v_reporte_mensual;
+DROP VIEW IF EXISTS v_tendencia_anual;
+DROP VIEW IF EXISTS v_examenes_seccion;
+DROP VIEW IF EXISTS v_promedio_acumulado;
+DROP VIEW IF EXISTS v_examenes_cumplimiento;
+DROP VIEW IF EXISTS v_fases_seccion;
+DROP VIEW IF EXISTS v_portafolio_seccion;
 
--- ── Vista 2: Tendencia anual ───────────────────────────────────────────────────
-CREATE OR REPLACE VIEW v_tendencia_anual AS
+-- ── Vista 1: Examenes x Seccion (prioridad #1) ────────────────────────────────
+-- Una fila por examen/mes. Semaforo basado en umbrales absolutos de dias
+-- parametrizables desde config_tolerancias.
+-- Excluye sub-componentes via examenes_excluidos.
+CREATE OR REPLACE VIEW v_examenes_cumplimiento AS
 SELECT
-    p.anio,
+    CAST(p.anio AS VARCHAR)                  AS anio,
     p.mes,
-    p.fecha_inicio,
-    ts.seccion,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
-    ts.ingreso_impresion_dias AS dias_entrega,
-    COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
-    CASE
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NOT NULL
-             AND COALESCE(ts.meta_dias, ms.meta_dias) > 0
-             AND ts.ingreso_impresion_dias IS NOT NULL
-             AND ts.ingreso_impresion_dias > 0
-        THEN ROUND(COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
-        ELSE NULL
-    END AS eficacia
-FROM tiempos_seccion ts
-JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-ORDER BY p.anio, p.fecha_inicio, ts.seccion;
-
--- ── Vista 3: Detalle por examen ───────────────────────────────────────────────
-CREATE OR REPLACE VIEW v_examenes_seccion AS
-SELECT
-    p.anio,
-    p.mes,
-    p.fecha_inicio,
-    p.fecha_fin,
-    te.seccion_padre,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
+    te.seccion_padre                         AS seccion,
+    COALESCE(ms.tipo, 'INMUNOXXI')           AS tipo,
     te.examen,
     te.total_examenes,
-    te.ingreso_resultado_horas,
-    te.resultado_validacion_horas,
-    te.ingreso_validacion_horas,
-    te.validacion_impresion_horas,
-    te.ingreso_impresion_horas,
-    te.ingreso_resultado_dias,
-    te.resultado_validacion_dias,
-    te.ingreso_validacion_dias,
-    te.validacion_impresion_dias,
-    te.ingreso_impresion_dias AS dias_entrega,
-    COALESCE(ms.meta_dias, 0) AS meta_dias,
+    te.ingreso_impresion_dias                AS total_dias,
+    COALESCE(mp.meta_dias, ms.meta_dias, 0)  AS meta_dias,
+    -- % del tiempo meta utilizado: 100% = exactamente en meta, >100% = fuera de meta
     CASE
-        WHEN te.ingreso_impresion_dias IS NOT NULL
-             AND ms.meta_dias IS NOT NULL
-             AND te.ingreso_impresion_dias > ms.meta_dias
-        THEN true
-        ELSE false
-    END AS excede_meta,
+        WHEN te.ingreso_impresion_dias IS NULL THEN NULL
+        WHEN COALESCE(mp.meta_dias, ms.meta_dias) IS NULL
+             OR COALESCE(mp.meta_dias, ms.meta_dias) = 0 THEN NULL
+        ELSE ROUND(
+            te.ingreso_impresion_dias / NULLIF(COALESCE(mp.meta_dias, ms.meta_dias), 0) * 100,
+            2
+        )
+    END AS pct_meta_utilizado,
+    -- Semaforo: CUMPLE / ALERTA / CRITICO segun umbrales absolutos en dias
     CASE
-        WHEN te.ingreso_impresion_dias IS NULL OR ms.meta_dias IS NULL THEN NULL
-        ELSE ROUND(ms.meta_dias - te.ingreso_impresion_dias, 4)
-    END AS diferencia_dias
-FROM tiempos_examen te
-JOIN periodos p ON p.id = te.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(te.seccion_padre))
-WHERE te.seccion_padre IS NOT NULL
-ORDER BY p.fecha_inicio, te.seccion_padre, te.examen;
-
--- ── Vista 4: Portafolio por seccion y periodo ─────────────────────────────────
-CREATE OR REPLACE VIEW v_portafolio_seccion AS
-SELECT
-    p.anio,
-    p.mes,
-    p.fecha_inicio,
-    p.fecha_fin,
-    te.seccion_padre,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
-    COALESCE(ms.meta_dias, 0) AS meta_dias,
-    COUNT(*) AS total_pruebas_portafolio,
-    COUNT(*) FILTER (
-        WHERE te.ingreso_impresion_dias IS NOT NULL
-          AND ms.meta_dias IS NOT NULL
-          AND te.ingreso_impresion_dias > ms.meta_dias
-    ) AS pruebas_fuera_meta,
-    ROUND(
-        COUNT(*) FILTER (
-            WHERE te.ingreso_impresion_dias IS NOT NULL
-              AND ms.meta_dias IS NOT NULL
-              AND te.ingreso_impresion_dias > ms.meta_dias
-        )::numeric / NULLIF(COUNT(*), 0),
-        4
-    ) AS pct_fuera_meta,
-    CASE
-        WHEN ROUND(
-            COUNT(*) FILTER (
-                WHERE te.ingreso_impresion_dias IS NOT NULL
-                  AND ms.meta_dias IS NOT NULL
-                  AND te.ingreso_impresion_dias > ms.meta_dias
-            )::numeric / NULLIF(COUNT(*), 0),
-            4
-        ) <= 0.05 THEN 'EN RANGO'
-        WHEN ROUND(
-            COUNT(*) FILTER (
-                WHERE te.ingreso_impresion_dias IS NOT NULL
-                  AND ms.meta_dias IS NOT NULL
-                  AND te.ingreso_impresion_dias > ms.meta_dias
-            )::numeric / NULLIF(COUNT(*), 0),
-            4
-        ) <= 0.10 THEN 'ALERTA'
-        WHEN ROUND(
-            COUNT(*) FILTER (
-                WHERE te.ingreso_impresion_dias IS NOT NULL
-                  AND ms.meta_dias IS NOT NULL
-                  AND te.ingreso_impresion_dias > ms.meta_dias
-            )::numeric / NULLIF(COUNT(*), 0),
-            4
-        ) <= 0.15 THEN 'ALARMA'
+        WHEN te.ingreso_impresion_dias IS NULL
+             THEN 'SIN DATOS'
+        WHEN te.ingreso_impresion_dias <= COALESCE(ct.umbral_dias_cumple,  ct_def.umbral_dias_cumple,  10)
+             THEN 'CUMPLE'
+        WHEN te.ingreso_impresion_dias <= COALESCE(ct.umbral_dias_alerta,  ct_def.umbral_dias_alerta,  15)
+             THEN 'ALERTA'
         ELSE 'CRITICO'
-    END AS estado_tolerancia
+    END AS estado
 FROM tiempos_examen te
 JOIN periodos p ON p.id = te.periodo_id
 LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(te.seccion_padre))
+LEFT JOIN metas_periodo mp
+    ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(te.seccion_padre))
+    AND mp.anio = p.anio AND mp.mes = p.mes
+LEFT JOIN examenes_excluidos ee
+    ON UPPER(TRIM(ee.seccion)) = UPPER(TRIM(te.seccion_padre))
+    AND te.examen LIKE ee.codigo_examen || '-%'
+LEFT JOIN config_tolerancias ct
+    ON ct.anio = p.anio AND ct.mes = p.mes
+LEFT JOIN config_tolerancias ct_def
+    ON ct_def.anio IS NULL AND ct_def.mes IS NULL
 WHERE te.seccion_padre IS NOT NULL
-GROUP BY p.anio, p.mes, p.fecha_inicio, p.fecha_fin, te.seccion_padre, ms.meta_dias, ms.tipo
-ORDER BY p.fecha_inicio, te.seccion_padre;
+  AND ee.id IS NULL
+ORDER BY p.anio, p.mes, te.seccion_padre, te.examen;
 
--- ── Vista 5: Promedio acumulado por seccion ───────────────────────────────────
-CREATE OR REPLACE VIEW v_promedio_acumulado AS
-SELECT
-    ts.seccion,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
-    p.anio,
-    COALESCE(ms.meta_dias, 0) AS meta_dias,
-    COUNT(*) AS meses_procesados,
-    ROUND(AVG(ts.ingreso_impresion_dias), 4) AS promedio_acumulado_dias,
-    CASE
-        WHEN AVG(ts.ingreso_impresion_dias) > 0
-             AND ms.meta_dias IS NOT NULL
-             AND ms.meta_dias > 0
-        THEN ROUND(ms.meta_dias / AVG(ts.ingreso_impresion_dias), 4)
-        ELSE NULL
-    END AS eficacia_acumulada,
-    CASE
-        WHEN ms.meta_dias IS NULL OR ms.meta_dias = 0 THEN 'SIN META'
-        WHEN AVG(ts.ingreso_impresion_dias) IS NULL   THEN 'SIN DATOS'
-        WHEN ms.meta_dias / NULLIF(AVG(ts.ingreso_impresion_dias), 0) >= 1.0  THEN 'CUMPLE'
-        WHEN ms.meta_dias / NULLIF(AVG(ts.ingreso_impresion_dias), 0) >= 0.75 THEN 'ALERTA'
-        ELSE 'NO CUMPLE'
-    END AS estado_acumulado,
-    MIN(p.fecha_inicio) AS desde,
-    MAX(p.fecha_fin)    AS hasta
-FROM tiempos_seccion ts
-JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-WHERE ts.ingreso_impresion_dias IS NOT NULL
-GROUP BY ts.seccion, p.anio, ms.meta_dias, ms.tipo
-ORDER BY p.anio, ts.seccion;
-
--- ── Vista 6: Fases por seccion y mes ─────────────────────────────────────────
--- Desglosa las 5 fases del pipeline, sus porcentajes sobre el total,
--- y detecta el cuello de botella entre las 3 fases independientes.
+-- ── Vista 2: Fases x Seccion ──────────────────────────────────────────────────
+-- Una fila por seccion/mes. Desglose de fases, total_dias vs meta y cuello
+-- de botella. El dato de mayor interes es total_dias vs meta_dias.
 CREATE OR REPLACE VIEW v_fases_seccion AS
 SELECT
-    p.anio,
+    CAST(p.anio AS VARCHAR)                  AS anio,
     p.mes,
-    p.fecha_inicio,
-    p.fecha_fin,
     ts.seccion,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
+    COALESCE(ms.tipo, 'INMUNOXXI')           AS tipo,
     ts.total_examenes,
-    -- Las 5 fases
-    ts.ingreso_resultado_dias    AS fase1_procesamiento,
-    ts.resultado_validacion_dias AS fase2_validacion,
-    ts.ingreso_validacion_dias   AS fase3_ingreso_validacion,
-    ts.validacion_impresion_dias AS fase4_impresion,
-    ts.ingreso_impresion_dias    AS fase5_total,
-    -- Meta y eficacia (computados en la vista, no dependen de n8n)
-    COALESCE(ts.meta_dias, ms.meta_dias) AS meta_dias,
+    -- Fases en dias
+    ts.ingreso_resultado_dias                AS procesamiento_dias,
+    ts.resultado_validacion_dias             AS validacion_dias,
+    ts.ingreso_validacion_dias               AS proc_y_validacion_dias,
+    ts.validacion_impresion_dias             AS impresion_dias,
+    ts.ingreso_impresion_dias                AS total_dias,
+    -- Meta y cumplimiento
+    COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) AS meta_dias,
     CASE
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NOT NULL
-             AND COALESCE(ts.meta_dias, ms.meta_dias) > 0
+        WHEN COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) IS NOT NULL
+             AND COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) > 0
              AND ts.ingreso_impresion_dias IS NOT NULL
              AND ts.ingreso_impresion_dias > 0
-        THEN ROUND(COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
+        THEN ROUND(COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias, 4)
         ELSE NULL
     END AS eficacia,
     CASE
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) IS NULL
-             OR COALESCE(ts.meta_dias, ms.meta_dias) = 0 THEN 'SIN META'
+        WHEN COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) IS NULL
+             OR COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) = 0 THEN 'SIN META'
         WHEN ts.ingreso_impresion_dias IS NULL
-             OR ts.ingreso_impresion_dias = 0              THEN 'SIN DATOS'
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 1.0  THEN 'CUMPLE'
-        WHEN COALESCE(ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 0.75 THEN 'ALERTA'
+             OR ts.ingreso_impresion_dias = 0                           THEN 'SIN DATOS'
+        WHEN COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 1.0  THEN 'CUMPLE'
+        WHEN COALESCE(mp.meta_dias, ts.meta_dias, ms.meta_dias) / ts.ingreso_impresion_dias >= 0.75 THEN 'ALERTA'
         ELSE 'NO CUMPLE'
-    END AS estado_eficacia,
-    -- Porcentaje de cada fase sobre fase5_total
+    END AS estado,
+    -- Peso de cada fase sobre total_dias
     CASE WHEN ts.ingreso_impresion_dias > 0
-        THEN ROUND(ts.ingreso_resultado_dias    / ts.ingreso_impresion_dias, 4)
-        ELSE NULL
-    END AS pct_fase1,
+        THEN ROUND(ts.ingreso_resultado_dias    / ts.ingreso_impresion_dias, 4) ELSE NULL
+    END AS pct_procesamiento,
     CASE WHEN ts.ingreso_impresion_dias > 0
-        THEN ROUND(ts.resultado_validacion_dias / ts.ingreso_impresion_dias, 4)
-        ELSE NULL
-    END AS pct_fase2,
+        THEN ROUND(ts.resultado_validacion_dias / ts.ingreso_impresion_dias, 4) ELSE NULL
+    END AS pct_validacion,
     CASE WHEN ts.ingreso_impresion_dias > 0
-        THEN ROUND(ts.ingreso_validacion_dias   / ts.ingreso_impresion_dias, 4)
-        ELSE NULL
-    END AS pct_fase3,
-    CASE WHEN ts.ingreso_impresion_dias > 0
-        THEN ROUND(ts.validacion_impresion_dias / ts.ingreso_impresion_dias, 4)
-        ELSE NULL
-    END AS pct_fase4,
-    -- Cuello de botella: la mayor de las 3 fases independientes
-    -- (procesamiento, validacion, impresion)
+        THEN ROUND(ts.validacion_impresion_dias / ts.ingreso_impresion_dias, 4) ELSE NULL
+    END AS pct_impresion,
+    -- Cuello de botella: la fase mas lenta
     (
         SELECT fase
         FROM (VALUES
@@ -267,32 +134,72 @@ SELECT
 FROM tiempos_seccion ts
 JOIN periodos p ON p.id = ts.periodo_id
 LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-ORDER BY p.anio, p.fecha_inicio, ts.seccion;
+LEFT JOIN metas_periodo mp
+    ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(ts.seccion))
+    AND mp.anio = p.anio AND mp.mes = p.mes
+ORDER BY p.anio, p.mes, ts.seccion;
 
--- ── Vista 7: Resumen global por periodo y tipo ────────────────────────────────
--- Promedio ponderado (por total_examenes) de las 5 fases agrupado por periodo.
--- Equivalente a la fila "Total" del reporte Enterprise que n8n descarta.
-CREATE OR REPLACE VIEW v_resumen_global AS
+-- ── Vista 3: Portafolio x Seccion ─────────────────────────────────────────────
+-- Agrega examenes por seccion/mes: cuantos superan la meta y semaforo.
+-- Tolerancias parametrizables desde config_tolerancias.
+-- 3 niveles: EN RANGO / ALERTA / CRITICO.
+-- Excluye sub-componentes via examenes_excluidos.
+CREATE OR REPLACE VIEW v_portafolio_seccion AS
 SELECT
-    p.anio,
-    p.mes,
-    p.fecha_inicio,
-    p.fecha_fin,
-    COALESCE(ms.tipo, 'INMUNOXXI') AS tipo,
-    SUM(ts.total_examenes) AS total_examenes,
-    ROUND(SUM(ts.ingreso_resultado_dias    * ts.total_examenes)
-        / NULLIF(SUM(ts.total_examenes), 0), 4) AS ingreso_resultado_dias,
-    ROUND(SUM(ts.resultado_validacion_dias * ts.total_examenes)
-        / NULLIF(SUM(ts.total_examenes), 0), 4) AS resultado_validacion_dias,
-    ROUND(SUM(ts.ingreso_validacion_dias   * ts.total_examenes)
-        / NULLIF(SUM(ts.total_examenes), 0), 4) AS ingreso_validacion_dias,
-    ROUND(SUM(ts.validacion_impresion_dias * ts.total_examenes)
-        / NULLIF(SUM(ts.total_examenes), 0), 4) AS validacion_impresion_dias,
-    ROUND(SUM(ts.ingreso_impresion_dias    * ts.total_examenes)
-        / NULLIF(SUM(ts.total_examenes), 0), 4) AS ingreso_impresion_dias
-FROM tiempos_seccion ts
-JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
-WHERE ts.ingreso_impresion_dias IS NOT NULL
-GROUP BY p.anio, p.mes, p.fecha_inicio, p.fecha_fin, ms.tipo
-ORDER BY p.fecha_inicio, ms.tipo;
+    sub.anio,
+    sub.mes,
+    sub.seccion,
+    sub.tipo,
+    sub.meta_dias,
+    sub.total_pruebas,
+    sub.pruebas_fuera_meta,
+    sub.pct_fuera_meta,
+    CASE
+        WHEN sub.pct_fuera_meta <= sub.umbral_en_rango THEN 'EN RANGO'
+        WHEN sub.pct_fuera_meta <= sub.umbral_alerta   THEN 'ALERTA'
+        ELSE 'CRITICO'
+    END AS estado
+FROM (
+    SELECT
+        CAST(p.anio AS VARCHAR)                  AS anio,
+        p.mes,
+        te.seccion_padre                                      AS seccion,
+        COALESCE(ms.tipo, 'INMUNOXXI')                        AS tipo,
+        COALESCE(mp.meta_dias, ms.meta_dias, 0)               AS meta_dias,
+        COUNT(*)                                              AS total_pruebas,
+        COUNT(*) FILTER (
+            WHERE te.ingreso_impresion_dias IS NOT NULL
+              AND COALESCE(mp.meta_dias, ms.meta_dias) IS NOT NULL
+              AND te.ingreso_impresion_dias > COALESCE(mp.meta_dias, ms.meta_dias)
+        )                                                     AS pruebas_fuera_meta,
+        ROUND(
+            COUNT(*) FILTER (
+                WHERE te.ingreso_impresion_dias IS NOT NULL
+                  AND COALESCE(mp.meta_dias, ms.meta_dias) IS NOT NULL
+                  AND te.ingreso_impresion_dias > COALESCE(mp.meta_dias, ms.meta_dias)
+            )::numeric / NULLIF(COUNT(*), 0),
+            4
+        )                                                     AS pct_fuera_meta,
+        COALESCE(ct.umbral_en_rango,  ct_def.umbral_en_rango,  0.10) AS umbral_en_rango,
+        COALESCE(ct.umbral_alerta,    ct_def.umbral_alerta,    0.15) AS umbral_alerta,
+        COALESCE(ct.umbral_critico,   ct_def.umbral_critico,   0.20) AS umbral_critico
+    FROM tiempos_examen te
+    JOIN periodos p ON p.id = te.periodo_id
+    LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(te.seccion_padre))
+    LEFT JOIN metas_periodo mp
+        ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(te.seccion_padre))
+        AND mp.anio = p.anio AND mp.mes = p.mes
+    LEFT JOIN examenes_excluidos ee
+        ON UPPER(TRIM(ee.seccion)) = UPPER(TRIM(te.seccion_padre))
+        AND te.examen LIKE ee.codigo_examen || '-%'
+    LEFT JOIN config_tolerancias ct
+        ON ct.anio = p.anio AND ct.mes = p.mes
+    LEFT JOIN config_tolerancias ct_def
+        ON ct_def.anio IS NULL AND ct_def.mes IS NULL
+    WHERE te.seccion_padre IS NOT NULL
+      AND ee.id IS NULL
+    GROUP BY p.anio, p.mes, te.seccion_padre, ms.tipo, ms.meta_dias, mp.meta_dias,
+             ct.umbral_en_rango, ct.umbral_alerta, ct.umbral_critico,
+             ct_def.umbral_en_rango, ct_def.umbral_alerta, ct_def.umbral_critico
+) sub
+ORDER BY sub.anio, sub.mes, sub.seccion;

@@ -40,10 +40,33 @@ router.post('/login', async (req, res) => {
       es_admin: user.es_admin,
     };
 
+    // Obtener permisos agregados del usuario
+    let puede_editar_metas = user.es_admin;
+    let puede_editar_examenes = user.es_admin;
+
+    if (!user.es_admin) {
+      const permsResult = await pool.query(
+        `SELECT
+           bool_or(puede_editar_metas) AS puede_editar_metas,
+           bool_or(puede_editar_examenes) AS puede_editar_examenes
+         FROM portal_config.usuario_automatizacion
+         WHERE usuario_id = $1`,
+        [user.id]
+      );
+      if (permsResult.rows.length > 0) {
+        puede_editar_metas = permsResult.rows[0].puede_editar_metas || false;
+        puede_editar_examenes = permsResult.rows[0].puede_editar_examenes || false;
+      }
+    }
+
     res.json({
       success: true,
       token: signToken(payload),
-      user: payload,
+      user: {
+        ...payload,
+        puede_editar_metas,
+        puede_editar_examenes,
+      },
     });
   } catch (err) {
     console.error('Login error:', err);
