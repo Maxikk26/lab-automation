@@ -139,7 +139,7 @@ export default function HomePage() {
             <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
               4
             </span>
-            Los resultados estaran disponibles inmediatamente en Power BI
+            Los resultados estaran disponibles inmediatamente en Metabase
           </li>
         </ol>
       </div>

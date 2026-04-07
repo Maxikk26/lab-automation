@@ -103,6 +103,13 @@ export async function deleteMetaPeriodo(data: { seccion: string; anio: number; m
 
 // ── Exclusiones ──
 
+export async function fetchExamenesCatalogo(seccion?: string) {
+  const q = seccion ? `?seccion=${encodeURIComponent(seccion)}` : '';
+  const res = await fetch(`${API_BASE}/examenes/catalogo${q}`, { headers: authHeaders() });
+  if (res.status === 401) throw new Error('unauthorized');
+  return res.json();
+}
+
 export async function fetchExclusiones(seccion?: string) {
   const q = seccion ? `?seccion=${encodeURIComponent(seccion)}` : '';
   const res = await fetch(`${API_BASE}/exclusiones${q}`, { headers: authHeaders() });
@@ -110,7 +117,10 @@ export async function fetchExclusiones(seccion?: string) {
   return res.json();
 }
 
-export async function saveExclusion(data: { seccion: string; codigo_examen: string; nombre_examen?: string; motivo?: string }) {
+export async function saveExclusion(
+  data: Array<{ seccion: string; codigo_examen: string; nombre_examen?: string; motivo?: string }>
+    | { seccion: string; codigo_examen: string; nombre_examen?: string; motivo?: string }
+) {
   const res = await fetch(`${API_BASE}/admin/exclusiones/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -120,7 +130,10 @@ export async function saveExclusion(data: { seccion: string; codigo_examen: stri
   return res.json();
 }
 
-export async function deleteExclusion(data: { seccion: string; codigo_examen: string }) {
+export async function deleteExclusion(
+  data: Array<{ seccion: string; codigo_examen: string }>
+    | { seccion: string; codigo_examen: string }
+) {
   const res = await fetch(`${API_BASE}/admin/exclusiones/delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },

@@ -76,6 +76,17 @@ UPDATE metas_seccion SET meta_dias = 1.0, updated_at = NOW()
 UPDATE metas_seccion SET meta_dias = 9.0, updated_at = NOW()
     WHERE seccion = 'BIOLOGIA MOLECULAR' AND meta_dias = 7.0;
 
+-- ── Limpiar espacios en codigos de examen (Enterprise exporta con padding) ──
+-- Normaliza "3999           -Contaje Celular" → "3999-Contaje Celular"
+UPDATE tiempos_examen
+  SET examen = TRIM(SPLIT_PART(examen, '-', 1)) || '-' || TRIM(SUBSTR(examen, STRPOS(examen, '-') + 1))
+  WHERE STRPOS(examen, '-') > 0
+    AND SPLIT_PART(examen, '-', 1) <> TRIM(SPLIT_PART(examen, '-', 1));
+
+-- Limpiar codigos en examenes_excluidos por si se insertaron con espacios
+UPDATE examenes_excluidos SET codigo_examen = TRIM(codigo_examen)
+  WHERE codigo_examen <> TRIM(codigo_examen);
+
 -- ── Schema portal_config: permisos granulares ──
 
 SET search_path TO portal_config;

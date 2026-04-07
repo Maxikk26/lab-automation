@@ -1,234 +1,489 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { ListX, Plus, Loader2, Trash2, X, Save } from 'lucide-react';
+import { ListX, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchExclusiones, saveExclusion, deleteExclusion } from '../api';
-import type { ExamenExcluido } from '../types';
+import { fetchExamenesCatalogo, saveExclusion, deleteExclusion } from '../api';
 
-const SECCIONES = [
-  'INMUNODIAGNÓSTICO', 'HEMOSTASIA Y TROMBOSIS', 'HEMATOLOGÍA',
-  'UROANÁLISIS', 'QUÍMICA', 'PRUEBAS ESPECIALES', 'LIQUIDO SINOVIAL',
-  'INHIBIDOR LUPICO', 'BIOLOGIA MOLECULAR', 'CITOMETRIA',
-];
-
-interface FormState {
+interface ExamenCatalogo {
   seccion: string;
   codigo_examen: string;
   nombre_examen: string;
-  motivo: string;
+  excluido: boolean;
+  motivo?: string;
 }
 
-const emptyForm: FormState = { seccion: '', codigo_examen: '', nombre_examen: '', motivo: '' };
+const PAGE_SIZE = 30;
+const itemKey = (e: ExamenCatalogo) => `${e.seccion}|${e.codigo_examen}`;
+
+function Pagination({
+  page, total, pageSize, onChange,
+}: { page: number; total: number; pageSize: number; onChange: (p: number) => void }) {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return null;
+  const from = page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, total);
+  return (
+    <div className="flex items-center justify-between border-t border-slate-200 px-4 py-2.5 text-sm text-slate-500">
+      <span>{from}–{to} de {total}</span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onChange(page - 1)}
+          disabled={page === 0}
+          className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="min-w-[60px] text-center text-xs">
+          Pág {page + 1} / {totalPages}
+        </span>
+        <button
+          onClick={() => onChange(page + 1)}
+          disabled={page >= totalPages - 1}
+          className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ExclusionesPage() {
   const { canEditExamenes } = useAuth();
-  const [items, setItems] = useState<ExamenExcluido[]>([]);
+  const [catalogo, setCatalogo] = useState<ExamenCatalogo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQ, setSearchQ] = useState('');
   const [filterSeccion, setFilterSeccion] = useState('');
-  const [editing, setEditing] = useState<FormState | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedExcluded, setSelectedExcluded] = useState<Set<string>>(new Set());
+  const [motivo, setMotivo] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [excludedPage, setExcludedPage] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchExclusiones(filterSeccion || undefined);
-      if (res.success) setItems(res.data);
+      const res = await fetchExamenesCatalogo();
+      if (res.success) setCatalogo(res.data);
     } catch { /* auth handles */ }
     setLoading(false);
-  }, [filterSeccion]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  // Reset pages and excluded selection when filters change
+  useEffect(() => {
+    setCatalogPage(0);
+    setExcludedPage(0);
+    setSelectedExcluded(new Set());
+  }, [searchQ, filterSeccion]);
+
   if (!canEditExamenes) return <Navigate to="/" replace />;
 
-  const handleSave = async () => {
-    if (!editing) return;
-    if (!editing.seccion || !editing.codigo_examen.trim()) {
-      setError('Seccion y codigo son requeridos');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const res = await saveExclusion(editing);
-      if (res.success) {
-        setEditing(null);
-        await load();
-      } else {
-        setError(res.message || 'Error al guardar');
-      }
-    } catch {
-      setError('Error de conexion');
-    }
-    setSaving(false);
+  const secciones = useMemo(
+    () => [...new Set(catalogo.map((e) => e.seccion))].sort(),
+    [catalogo],
+  );
+
+  const filtered = useMemo(() => {
+    const q = searchQ.toLowerCase();
+    return catalogo.filter((e) => {
+      if (filterSeccion && e.seccion !== filterSeccion) return false;
+      if (!q) return true;
+      return (
+        e.codigo_examen.toLowerCase().includes(q) ||
+        e.nombre_examen.toLowerCase().includes(q)
+      );
+    });
+  }, [catalogo, searchQ, filterSeccion]);
+
+  const disponibles = filtered.filter((e) => !e.excluido);
+  const excluidos = filtered.filter((e) => e.excluido);
+
+  const catalogPageData = disponibles.slice(catalogPage * PAGE_SIZE, (catalogPage + 1) * PAGE_SIZE);
+  const excludedPageData = excluidos.slice(excludedPage * PAGE_SIZE, (excludedPage + 1) * PAGE_SIZE);
+
+  // ── Selection ────────────────────────────────────────────────────────────
+
+  const toggleSelect = (e: ExamenCatalogo) => {
+    const key = itemKey(e);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
-  const handleDelete = async (item: ExamenExcluido) => {
-    if (!confirm(`¿Eliminar exclusion "${item.codigo_examen}" de ${item.seccion}?`)) return;
-    await deleteExclusion({ seccion: item.seccion, codigo_examen: item.codigo_examen });
+  const allPageSelected =
+    catalogPageData.length > 0 &&
+    catalogPageData.every((e) => selected.has(itemKey(e)));
+
+  const togglePageSelection = () => {
+    const pageKeys = catalogPageData.map(itemKey);
+    if (allPageSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        pageKeys.forEach((k) => next.delete(k));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        pageKeys.forEach((k) => next.add(k));
+        return next;
+      });
+    }
+  };
+
+  // ── Selection helpers (excluded table) ───────────────────────────────────
+
+  const toggleSelectExcluded = (e: ExamenCatalogo) => {
+    const key = itemKey(e);
+    setSelectedExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const allExcludedPageSelected =
+    excludedPageData.length > 0 &&
+    excludedPageData.every((e) => selectedExcluded.has(itemKey(e)));
+
+  const toggleExcludedPageSelection = () => {
+    const pageKeys = excludedPageData.map(itemKey);
+    if (allExcludedPageSelected) {
+      setSelectedExcluded((prev) => {
+        const next = new Set(prev);
+        pageKeys.forEach((k) => next.delete(k));
+        return next;
+      });
+    } else {
+      setSelectedExcluded((prev) => {
+        const next = new Set(prev);
+        pageKeys.forEach((k) => next.add(k));
+        return next;
+      });
+    }
+  };
+
+  // ── Actions ──────────────────────────────────────────────────────────────
+
+  const handleExcluir = async () => {
+    const toSave = disponibles.filter((e) => selected.has(itemKey(e)));
+    if (!toSave.length) return;
+    setSaving(true);
+    await saveExclusion(toSave.map((e) => ({
+      seccion: e.seccion,
+      codigo_examen: e.codigo_examen,
+      nombre_examen: e.nombre_examen,
+      motivo: motivo.trim() || undefined,
+    })));
+    setSelected(new Set());
+    setMotivo('');
+    setSaving(false);
     await load();
   };
 
-  // Group by section
-  const grouped = new Map<string, ExamenExcluido[]>();
-  for (const item of items) {
-    const key = item.seccion.trim();
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(item);
-  }
+  const handleQuitarSeleccionados = async () => {
+    const toDelete = excluidos.filter((e) => selectedExcluded.has(itemKey(e)));
+    if (!toDelete.length) return;
+    setSaving(true);
+    await deleteExclusion(toDelete.map((e) => ({ seccion: e.seccion, codigo_examen: e.codigo_examen })));
+    setSelectedExcluded(new Set());
+    setSaving(false);
+    await load();
+  };
+
+  const handleRemoveOne = async (e: ExamenCatalogo) => {
+    await deleteExclusion({ seccion: e.seccion, codigo_examen: e.codigo_examen });
+    await load();
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ListX className="h-7 w-7 text-blue-600" />
-          <h1 className="text-2xl font-bold text-slate-900">Examenes Excluidos</h1>
-        </div>
-        {!editing && (
-          <button
-            onClick={() => { setEditing({ ...emptyForm }); setError(''); }}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" />
-            Agregar Exclusion
-          </button>
-        )}
+    <div className="mx-auto max-w-5xl">
+      {/* Header */}
+      <div className="mb-4 flex items-center gap-3">
+        <ListX className="h-7 w-7 text-blue-600" />
+        <h1 className="text-2xl font-bold text-slate-900">Examenes Excluidos</h1>
       </div>
-
-      <p className="mb-4 text-sm text-slate-500">
-        Los examenes excluidos no se cuentan en el portafolio ni en las vistas de cumplimiento. Son sub-componentes que no representan pruebas independientes.
+      <p className="mb-6 text-sm text-slate-500">
+        Los examenes excluidos no cuentan en portafolio ni cumplimiento. Son sub-componentes que no representan pruebas independientes.
       </p>
 
-      {/* Filter */}
-      <div className="mb-4">
+      {/* Search + filter bar */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Buscar por codigo o nombre..."
+            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
+          {searchQ && (
+            <button
+              onClick={() => setSearchQ('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
         <select
           value={filterSeccion}
           onChange={(e) => setFilterSeccion(e.target.value)}
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         >
           <option value="">Todas las secciones</option>
-          {SECCIONES.map((s) => (
-            <option key={s} value={s}>{s.trim()}</option>
+          {secciones.map((s) => (
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
 
-      {/* Add/Edit form */}
-      {editing && (
-        <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50/50 p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Nueva Exclusion</h2>
-            <button onClick={() => setEditing(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Seccion</label>
-              <select
-                value={editing.seccion}
-                onChange={(e) => setEditing({ ...editing, seccion: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                <option value="">Seleccionar...</option>
-                {SECCIONES.map((s) => (
-                  <option key={s} value={s}>{s.trim()}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Codigo de examen</label>
-              <input
-                type="text"
-                value={editing.codigo_examen}
-                onChange={(e) => setEditing({ ...editing, codigo_examen: e.target.value })}
-                placeholder="Ej: 7623"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Nombre del examen</label>
-              <input
-                type="text"
-                value={editing.nombre_examen}
-                onChange={(e) => setEditing({ ...editing, nombre_examen: e.target.value })}
-                placeholder="Descripcion opcional"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Motivo</label>
-              <input
-                type="text"
-                value={editing.motivo}
-                onChange={(e) => setEditing({ ...editing, motivo: e.target.value })}
-                placeholder="Ej: Sub-componente de panel"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-          </div>
-          {error && (
-            <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
-          )}
-          <div className="mt-5 flex justify-end">
+      {/* Motivo + action bar — visible solo cuando hay seleccion */}
+      {selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <span className="text-sm font-medium text-red-800">
+            {selected.size} examen{selected.size > 1 ? 'es' : ''} seleccionado{selected.size > 1 ? 's' : ''}
+          </span>
+          <input
+            type="text"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Motivo de exclusion (opcional)"
+            className="min-w-[220px] flex-1 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+          />
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+              onClick={() => { setSelected(new Set()); setMotivo(''); }}
+              className="rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-100"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? 'Guardando...' : 'Guardar'}
+              Cancelar
+            </button>
+            <button
+              onClick={handleExcluir}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ListX className="h-4 w-4" />
+              )}
+              Excluir seleccionados
             </button>
           </div>
         </div>
       )}
 
-      {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
         </div>
-      ) : items.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-sm text-slate-500">
-          No hay examenes excluidos{filterSeccion ? ` para ${filterSeccion.trim()}` : ''}.
-        </div>
       ) : (
-        Array.from(grouped.entries()).map(([seccion, exams]) => (
-          <div key={seccion} className="mb-6">
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-400">{seccion.trim()}</h3>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <>
+          {/* ── Catalog table ─────────────────────────────────────────── */}
+          <div className="mb-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span className="text-sm font-semibold text-slate-700">
+                Catalogo — {disponibles.length} examenes
+                {searchQ || filterSeccion ? ' (filtrados)' : ''}
+              </span>
+              {disponibles.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (selected.size === disponibles.length) {
+                      setSelected(new Set());
+                    } else {
+                      setSelected(new Set(disponibles.map(itemKey)));
+                    }
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  {selected.size === disponibles.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                </button>
+              )}
+            </div>
+
+            {disponibles.length === 0 ? (
+              <div className="py-10 text-center text-sm text-slate-500">
+                {searchQ || filterSeccion
+                  ? 'Sin resultados para los filtros aplicados.'
+                  : 'Todos los examenes ya estan excluidos o no hay datos cargados.'}
+              </div>
+            ) : (
+              <>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/60">
+                      <th className="w-10 px-4 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          onChange={togglePageSelection}
+                          title="Seleccionar pagina actual"
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-600">Codigo</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-600">Nombre</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-600">Seccion</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {catalogPageData.map((e) => {
+                      const key = itemKey(e);
+                      const isSelected = selected.has(key);
+                      return (
+                        <tr
+                          key={key}
+                          onClick={() => toggleSelect(e)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td
+                            className="px-4 py-2.5 text-center"
+                            onClick={(ev) => ev.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(e)}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-slate-900">{e.codigo_examen}</td>
+                          <td className="px-4 py-2.5 text-slate-700">{e.nombre_examen || '—'}</td>
+                          <td className="px-4 py-2.5 text-slate-500">{e.seccion}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <Pagination
+                  page={catalogPage}
+                  total={disponibles.length}
+                  pageSize={PAGE_SIZE}
+                  onChange={setCatalogPage}
+                />
+              </>
+            )}
+          </div>
+
+          {/* ── Excluded table ────────────────────────────────────────── */}
+          {excluidos.length > 0 && (
+            <div className="overflow-hidden rounded-xl border border-blue-200 bg-white">
+              <div className="flex items-center justify-between border-b border-blue-200 bg-blue-50 px-4 py-2.5">
+                <span className="text-sm font-semibold text-blue-800">
+                  Exclusiones actuales — {excluidos.length} examenes
+                </span>
+                <div className="flex items-center gap-3">
+                  {selectedExcluded.size > 0 && (
+                    <button
+                      onClick={handleQuitarSeleccionados}
+                      disabled={saving}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                      Quitar seleccionados ({selectedExcluded.size})
+                    </button>
+                  )}
+                  {excluidos.length > 0 && (
+                    <button
+                      onClick={() => {
+                        if (selectedExcluded.size === excluidos.length) {
+                          setSelectedExcluded(new Set());
+                        } else {
+                          setSelectedExcluded(new Set(excluidos.map(itemKey)));
+                        }
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      {selectedExcluded.size === excluidos.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                    </button>
+                  )}
+                </div>
+              </div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
+                  <tr className="border-b border-blue-100 bg-blue-50/40">
+                    <th className="w-10 px-4 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allExcludedPageSelected}
+                        onChange={toggleExcludedPageSelection}
+                        title="Seleccionar pagina actual"
+                        className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                      />
+                    </th>
                     <th className="px-4 py-2 text-left font-semibold text-slate-600">Codigo</th>
                     <th className="px-4 py-2 text-left font-semibold text-slate-600">Nombre</th>
+                    <th className="px-4 py-2 text-left font-semibold text-slate-600">Seccion</th>
                     <th className="px-4 py-2 text-left font-semibold text-slate-600">Motivo</th>
-                    <th className="px-4 py-2 text-right font-semibold text-slate-600">Acciones</th>
+                    <th className="w-14 px-4 py-2" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {exams.map((item) => (
-                    <tr key={`${item.seccion}-${item.codigo_examen}`}>
-                      <td className="px-4 py-2 font-mono font-medium text-slate-900">{item.codigo_examen}</td>
-                      <td className="px-4 py-2 text-slate-600">{item.nombre_examen || '—'}</td>
-                      <td className="px-4 py-2 text-slate-500">{item.motivo || '—'}</td>
-                      <td className="px-4 py-2 text-right">
-                        <button
-                          onClick={() => handleDelete(item)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-blue-50">
+                  {excludedPageData.map((e) => {
+                    const key = itemKey(e);
+                    const isSelected = selectedExcluded.has(key);
+                    return (
+                      <tr
+                        key={key}
+                        onClick={() => toggleSelectExcluded(e)}
+                        className={`cursor-pointer transition-colors ${isSelected ? 'bg-red-50' : 'bg-blue-50/20 hover:bg-blue-50/40'}`}
+                      >
+                        <td className="px-4 py-2.5 text-center" onClick={(ev) => ev.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectExcluded(e)}
+                            className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                          />
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-slate-900">{e.codigo_examen}</td>
+                        <td className="px-4 py-2.5 text-slate-700">{e.nombre_examen || '—'}</td>
+                        <td className="px-4 py-2.5 text-slate-500">{e.seccion}</td>
+                        <td className="px-4 py-2.5 italic text-slate-400">{e.motivo || '—'}</td>
+                        <td className="px-4 py-2.5 text-right" onClick={(ev) => ev.stopPropagation()}>
+                          <button
+                            onClick={() => handleRemoveOne(e)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            title="Quitar exclusion"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              <Pagination
+                page={excludedPage}
+                total={excluidos.length}
+                pageSize={PAGE_SIZE}
+                onChange={setExcludedPage}
+              />
             </div>
-          </div>
-        ))
+          )}
+
+          {catalogo.length === 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-sm text-slate-500">
+              No hay examenes cargados en la base de datos.
+            </div>
+          )}
+        </>
       )}
     </div>
   );

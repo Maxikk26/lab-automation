@@ -65,7 +65,7 @@ LEFT JOIN metas_periodo mp
     AND mp.anio = p.anio AND mp.mes = p.mes
 LEFT JOIN examenes_excluidos ee
     ON UPPER(TRIM(ee.seccion)) = UPPER(TRIM(te.seccion_padre))
-    AND te.examen LIKE ee.codigo_examen || '-%'
+    AND TRIM(SPLIT_PART(te.examen, '-', 1)) = ee.codigo_examen
 LEFT JOIN config_tolerancias ct
     ON ct.anio = p.anio AND ct.mes = p.mes
 LEFT JOIN config_tolerancias ct_def
@@ -191,7 +191,7 @@ FROM (
         AND mp.anio = p.anio AND mp.mes = p.mes
     LEFT JOIN examenes_excluidos ee
         ON UPPER(TRIM(ee.seccion)) = UPPER(TRIM(te.seccion_padre))
-        AND te.examen LIKE ee.codigo_examen || '-%'
+        AND TRIM(SPLIT_PART(te.examen, '-', 1)) = ee.codigo_examen
     LEFT JOIN config_tolerancias ct
         ON ct.anio = p.anio AND ct.mes = p.mes
     LEFT JOIN config_tolerancias ct_def
