@@ -63,6 +63,24 @@ export async function deleteUsuario(id: number) {
   return res.json();
 }
 
+// ── Secciones ──
+
+export async function fetchSecciones() {
+  const res = await fetch(`${API_BASE}/secciones`, { headers: authHeaders() });
+  if (res.status === 401) throw new Error('unauthorized');
+  return res.json();
+}
+
+// ── Importaciones log ──
+
+export async function fetchImportacionesLog(limit = 50, estado?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (estado) params.set('estado', estado);
+  const res = await fetch(`${API_BASE}/importaciones/log?${params}`, { headers: authHeaders() });
+  if (res.status === 401) throw new Error('unauthorized');
+  return res.json();
+}
+
 // ── Metas ──
 
 export async function fetchMetas(anio: number) {

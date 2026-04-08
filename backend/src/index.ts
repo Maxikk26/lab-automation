@@ -6,6 +6,7 @@ import usuariosRouter from './routes/usuarios.js';
 import metasRouter from './routes/metas.js';
 import exclusionesRouter from './routes/exclusiones.js';
 import toleranciasRouter from './routes/tolerancias.js';
+import importacionesRouter from './routes/importaciones.js';
 import { applyMigrations } from './apply-migrations.js';
 import { applyViews } from './apply-views.js';
 
@@ -21,6 +22,7 @@ app.use('/api/portal', usuariosRouter);
 app.use('/api/portal', metasRouter);
 app.use('/api/portal', exclusionesRouter);
 app.use('/api/portal', toleranciasRouter);
+app.use('/api/portal', importacionesRouter);
 
 app.get('/api/portal/health', (_req, res) => {
   res.json({ status: 'ok' });

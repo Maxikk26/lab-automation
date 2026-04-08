@@ -8,6 +8,7 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import MetasPage from './pages/MetasPage';
 import ExclusionesPage from './pages/ExclusionesPage';
 import ToleranciasPage from './pages/ToleranciasPage';
+import ImportacionesLogPage from './pages/ImportacionesLogPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoutes() {
@@ -32,6 +33,7 @@ function ProtectedRoutes() {
         <Route path="/admin/metas" element={<MetasPage />} />
         <Route path="/admin/exclusiones" element={<ExclusionesPage />} />
         <Route path="/admin/tolerancias" element={<ToleranciasPage />} />
+        <Route path="/admin/importaciones" element={<ImportacionesLogPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

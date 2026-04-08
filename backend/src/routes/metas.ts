@@ -4,19 +4,32 @@ import { authenticate, requirePermission } from '../auth.js';
 
 const router = Router();
 
+// Catálogo de secciones (para dropdowns en el portal)
+router.get('/secciones', authenticate, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, nombre, tipo FROM tiempos_entrega.secciones ORDER BY tipo, nombre`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('Fetch secciones error:', err);
+    res.status(500).json({ success: false, message: 'Error interno' });
+  }
+});
+
 // Lista secciones con meta default + overrides por año
 router.get('/metas', authenticate, async (req, res) => {
   try {
     const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
 
     const { rows } = await pool.query(
-      `SELECT ms.seccion, ms.meta_dias AS meta_default, ms.tipo,
+      `SELECT s.nombre AS seccion, ms.meta_dias AS meta_default, s.tipo,
               mp.mes, mp.meta_dias AS meta_override
        FROM tiempos_entrega.metas_seccion ms
+       JOIN tiempos_entrega.secciones s ON s.id = ms.seccion_id
        LEFT JOIN tiempos_entrega.metas_periodo mp
-           ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(ms.seccion))
-           AND mp.anio = $1
-       ORDER BY ms.tipo, ms.seccion, mp.mes`,
+           ON mp.seccion_id = ms.seccion_id AND mp.anio = $1
+       ORDER BY s.tipo, s.nombre, mp.mes`,
       [anio]
     );
 
@@ -56,7 +69,12 @@ router.post('/admin/metas/default', authenticate, requirePermission('puede_edita
     }
 
     await pool.query(
-      `UPDATE tiempos_entrega.metas_seccion SET meta_dias = $1, updated_at = NOW() WHERE seccion = $2`,
+      `UPDATE tiempos_entrega.metas_seccion
+       SET meta_dias = $1, updated_at = NOW()
+       WHERE seccion_id = (
+           SELECT id FROM tiempos_entrega.secciones
+           WHERE nombre_norm = UPPER(TRIM(unaccent($2)))
+       )`,
       [meta_dias, seccion]
     );
 
@@ -77,9 +95,14 @@ router.post('/admin/metas/periodo', authenticate, requirePermission('puede_edita
     }
 
     await pool.query(
-      `INSERT INTO tiempos_entrega.metas_periodo (seccion, anio, mes, meta_dias)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (seccion, anio, mes) DO UPDATE SET meta_dias = EXCLUDED.meta_dias, updated_at = NOW()`,
+      `INSERT INTO tiempos_entrega.metas_periodo (seccion, seccion_id, anio, mes, meta_dias)
+       VALUES ($1,
+               (SELECT id FROM tiempos_entrega.secciones WHERE nombre_norm = UPPER(TRIM(unaccent($1)))),
+               $2, $3, $4)
+       ON CONFLICT (seccion, anio, mes)
+       DO UPDATE SET meta_dias = EXCLUDED.meta_dias,
+                     seccion_id = EXCLUDED.seccion_id,
+                     updated_at = NOW()`,
       [seccion, anio, mes, meta_dias]
     );
 
@@ -100,7 +123,12 @@ router.post('/admin/metas/periodo/delete', authenticate, requirePermission('pued
     }
 
     await pool.query(
-      `DELETE FROM tiempos_entrega.metas_periodo WHERE seccion = $1 AND anio = $2 AND mes = $3`,
+      `DELETE FROM tiempos_entrega.metas_periodo
+       WHERE seccion_id = (
+           SELECT id FROM tiempos_entrega.secciones
+           WHERE nombre_norm = UPPER(TRIM(unaccent($1)))
+       )
+       AND anio = $2 AND mes = $3`,
       [seccion, anio, mes]
     );
 

@@ -10,6 +10,7 @@ import {
   Target,
   ListX,
   Gauge,
+  ClipboardList,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -169,6 +170,10 @@ export default function Sidebar() {
             <NavLink to="/admin/usuarios" className={navLink}>
               <Users className="h-4 w-4" />
               Gestion de Usuarios
+            </NavLink>
+            <NavLink to="/admin/importaciones" className={navLink}>
+              <ClipboardList className="h-4 w-4" />
+              Log de Importaciones
             </NavLink>
           </>
         )}

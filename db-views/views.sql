@@ -31,7 +31,7 @@ CREATE OR REPLACE VIEW v_examenes_cumplimiento AS
 SELECT
     CAST(p.anio AS VARCHAR)                  AS anio,
     p.mes,
-    te.seccion_padre                         AS seccion,
+    s.nombre                                 AS seccion,
     COALESCE(ms.tipo, 'INMUNOXXI')           AS tipo,
     te.examen,
     te.total_examenes,
@@ -59,20 +59,23 @@ SELECT
     END AS estado
 FROM tiempos_examen te
 JOIN periodos p ON p.id = te.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(te.seccion_padre))
+LEFT JOIN secciones s
+    ON s.id = te.seccion_id
+    OR (te.seccion_id IS NULL AND s.nombre_norm = UPPER(TRIM(unaccent(te.seccion_padre))))
+LEFT JOIN metas_seccion ms ON ms.seccion_id = s.id
 LEFT JOIN metas_periodo mp
-    ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(te.seccion_padre))
+    ON mp.seccion_id = s.id
     AND mp.anio = p.anio AND mp.mes = p.mes
 LEFT JOIN examenes_excluidos ee
-    ON UPPER(TRIM(ee.seccion)) = UPPER(TRIM(te.seccion_padre))
+    ON ee.seccion_id = s.id
     AND TRIM(SPLIT_PART(te.examen, '-', 1)) = ee.codigo_examen
 LEFT JOIN config_tolerancias ct
     ON ct.anio = p.anio AND ct.mes = p.mes
 LEFT JOIN config_tolerancias ct_def
     ON ct_def.anio IS NULL AND ct_def.mes IS NULL
-WHERE te.seccion_padre IS NOT NULL
+WHERE s.id IS NOT NULL
   AND ee.id IS NULL
-ORDER BY p.anio, p.mes, te.seccion_padre, te.examen;
+ORDER BY p.anio, p.mes, s.nombre, te.examen;
 
 -- ── Vista 2: Fases x Seccion ──────────────────────────────────────────────────
 -- Una fila por seccion/mes. Desglose de fases, total_dias vs meta y cuello
@@ -81,7 +84,7 @@ CREATE OR REPLACE VIEW v_fases_seccion AS
 SELECT
     CAST(p.anio AS VARCHAR)                  AS anio,
     p.mes,
-    ts.seccion,
+    COALESCE(s.nombre, ts.seccion)           AS seccion,
     COALESCE(ms.tipo, 'INMUNOXXI')           AS tipo,
     ts.total_examenes,
     -- Fases en dias
@@ -133,11 +136,14 @@ SELECT
     ) AS cuello_botella
 FROM tiempos_seccion ts
 JOIN periodos p ON p.id = ts.periodo_id
-LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(ts.seccion))
+LEFT JOIN secciones s
+    ON s.id = ts.seccion_id
+    OR (ts.seccion_id IS NULL AND s.nombre_norm = UPPER(TRIM(unaccent(ts.seccion))))
+LEFT JOIN metas_seccion ms ON ms.seccion_id = s.id
 LEFT JOIN metas_periodo mp
-    ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(ts.seccion))
+    ON mp.seccion_id = s.id
     AND mp.anio = p.anio AND mp.mes = p.mes
-ORDER BY p.anio, p.mes, ts.seccion;
+ORDER BY p.anio, p.mes, COALESCE(s.nombre, ts.seccion);
 
 -- ── Vista 3: Portafolio x Seccion ─────────────────────────────────────────────
 -- Agrega examenes por seccion/mes: cuantos superan la meta y semaforo.
@@ -163,7 +169,7 @@ FROM (
     SELECT
         CAST(p.anio AS VARCHAR)                  AS anio,
         p.mes,
-        te.seccion_padre                                      AS seccion,
+        s.nombre                                              AS seccion,
         COALESCE(ms.tipo, 'INMUNOXXI')                        AS tipo,
         COALESCE(mp.meta_dias, ms.meta_dias, 0)               AS meta_dias,
         COUNT(*)                                              AS total_pruebas,
@@ -185,20 +191,23 @@ FROM (
         COALESCE(ct.umbral_critico,   ct_def.umbral_critico,   0.20) AS umbral_critico
     FROM tiempos_examen te
     JOIN periodos p ON p.id = te.periodo_id
-    LEFT JOIN metas_seccion ms ON UPPER(TRIM(ms.seccion)) = UPPER(TRIM(te.seccion_padre))
+    LEFT JOIN secciones s
+        ON s.id = te.seccion_id
+        OR (te.seccion_id IS NULL AND s.nombre_norm = UPPER(TRIM(unaccent(te.seccion_padre))))
+    LEFT JOIN metas_seccion ms ON ms.seccion_id = s.id
     LEFT JOIN metas_periodo mp
-        ON UPPER(TRIM(mp.seccion)) = UPPER(TRIM(te.seccion_padre))
+        ON mp.seccion_id = s.id
         AND mp.anio = p.anio AND mp.mes = p.mes
     LEFT JOIN examenes_excluidos ee
-        ON UPPER(TRIM(ee.seccion)) = UPPER(TRIM(te.seccion_padre))
+        ON ee.seccion_id = s.id
         AND TRIM(SPLIT_PART(te.examen, '-', 1)) = ee.codigo_examen
     LEFT JOIN config_tolerancias ct
         ON ct.anio = p.anio AND ct.mes = p.mes
     LEFT JOIN config_tolerancias ct_def
         ON ct_def.anio IS NULL AND ct_def.mes IS NULL
-    WHERE te.seccion_padre IS NOT NULL
+    WHERE s.id IS NOT NULL
       AND ee.id IS NULL
-    GROUP BY p.anio, p.mes, te.seccion_padre, ms.tipo, ms.meta_dias, mp.meta_dias,
+    GROUP BY p.anio, p.mes, s.id, s.nombre, ms.tipo, ms.meta_dias, mp.meta_dias,
              ct.umbral_en_rango, ct.umbral_alerta, ct.umbral_critico,
              ct_def.umbral_en_rango, ct_def.umbral_alerta, ct_def.umbral_critico
 ) sub
