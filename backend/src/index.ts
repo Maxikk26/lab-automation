@@ -6,6 +6,7 @@ import usuariosRouter from './routes/usuarios.js';
 import metasRouter from './routes/metas.js';
 import exclusionesRouter from './routes/exclusiones.js';
 import toleranciasRouter from './routes/tolerancias.js';
+import { applyMigrations } from './apply-migrations.js';
 import { applyViews } from './apply-views.js';
 
 const app = express();
@@ -26,6 +27,7 @@ app.get('/api/portal/health', (_req, res) => {
 });
 
 async function start() {
+  await applyMigrations();
   await applyViews();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Portal API running on port ${PORT}`);

@@ -60,6 +60,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-lab-inmunoxxi-jwt-secret-2026}
       - PORT=3001
     volumes:
+      - ./db-init:/app/db-init:ro
       - ./db-views:/app/db-views:ro
     depends_on:
       postgres:
